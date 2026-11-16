@@ -16,7 +16,7 @@
 ## 本轮实现
 
 1. Vite + TypeScript 单页应用，纸白外壳与右侧 480px 对话圆角卡片（CSS，对齐 DESIGN.md §8 / 改稿 07）。
-2. 左侧近黑圆角视口（`#101010`，16px），内嵌 LeaferJS：`01-左侧场景氛围.png` 作为场景图（`public/assets/scene/ambient-07.png`），支持拖拽平移、滚轮/按钮缩放；`rotateSpeed: 0` 禁止旋转。
+2. 左侧近黑圆角视口（`#101010`，16px），内嵌 LeaferJS：场景图为 `01` **裁切视口内景**（`ambient-07.png`，1346×876，不含稿内工具条/纸白边），支持拖拽平移、滚轮/按钮缩放；`rotateSpeed: 0` 禁止旋转；助理热区对齐老大办公室（非左下黑地）。
 3. 助理点击热区（透明 Rect）聚焦右侧输入与卡片强调，无新窗口。
 4. `src/mock-data.ts` 本地模拟状态与对话（设计稿 03 同等文案）。
 5. 设计文档与界面参考图、`docs/licenses/` 许可摘录、`LICENSE`（MIT）、`THIRD_PARTY_NOTICES`。

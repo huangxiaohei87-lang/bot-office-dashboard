@@ -26,20 +26,14 @@ export const presence: BotPresence[] = [
   { role: '助理', location: '老大办公室', posture: '在岗工作' },
   { role: '构思家', location: 'APP制作台', posture: '在岗工作' },
   { role: '素材管理', location: 'APP制作台', posture: '在岗工作' },
-  { role: '工程', location: 'APP制作台', posture: '离开' },
+  { role: '工程', location: 'APP制作台', posture: '在岗工作' },
   { role: '审查闸门', location: 'APP制作台', posture: '在岗工作' },
   { role: '上架辅助', location: 'APP制作台', posture: '在岗工作' },
   { role: '视觉与动效', location: '茶水间', posture: '茶水间休息' },
   { role: 'HR', location: '人事部', posture: '在岗工作' },
 ]
 
-/** Hit area on `ambient-07.png` (1432×1014) — boss office assistant. */
-export const assistantHotspot = {
-  x: 52,
-  y: 640,
-  width: 200,
-  height: 160,
-}
+export { ASSISTANT_HOTSPOT as assistantHotspot } from './scene-constants'
 
 export const chatMessages = [
   {

@@ -1,8 +1,7 @@
 import { App, Group, Image, Rect } from 'leafer-ui'
 import { RenderEvent } from '@leafer/core'
+import { ASSISTANT_HOTSPOT, SCENE_H, SCENE_W } from './scene-constants'
 
-const SCENE_W = 1432
-const SCENE_H = 1014
 const SCENE_URL = `${import.meta.env.BASE_URL}assets/scene/ambient-07.png`
 
 export interface SceneCanvas {
@@ -11,6 +10,7 @@ export interface SceneCanvas {
   resetView: () => void
   getSceneRotation: () => number
   getAssistantScreenCenter: () => { x: number; y: number } | null
+  getHotspotSceneCenter: () => { x: number; y: number }
 }
 
 export function createSceneCanvas(
@@ -47,10 +47,10 @@ export function createSceneCanvas(
   })
 
   const assistantHit = new Rect({
-    x: 52,
-    y: 640,
-    width: 200,
-    height: 160,
+    x: ASSISTANT_HOTSPOT.x,
+    y: ASSISTANT_HOTSPOT.y,
+    width: ASSISTANT_HOTSPOT.width,
+    height: ASSISTANT_HOTSPOT.height,
     fill: 'rgba(0,0,0,0.01)',
     cursor: 'pointer',
     hittable: true,
@@ -120,11 +120,17 @@ export function createSceneCanvas(
     return { x, y }
   }
 
+  const getHotspotSceneCenter = () => ({
+    x: ASSISTANT_HOTSPOT.x + ASSISTANT_HOTSPOT.width / 2,
+    y: ASSISTANT_HOTSPOT.y + ASSISTANT_HOTSPOT.height / 2,
+  })
+
   return {
     app,
     zoomBy,
     resetView: fit,
     getSceneRotation: () => content.rotation ?? 0,
     getAssistantScreenCenter,
+    getHotspotSceneCenter,
   }
 }

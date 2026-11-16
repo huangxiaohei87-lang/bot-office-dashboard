@@ -54,6 +54,20 @@ test.describe('可视化 Bot 协作管理后台 — 第一期烟雾', () => {
     expect(rotation).toBe(0)
   })
 
+  test('助理热区在裁切场景内覆盖助理，不在左下空白黑地', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('assistant-scene-hit').waitFor({ state: 'visible', timeout: 10_000 })
+    const center = await page.evaluate(() =>
+      (window as unknown as { __assistantHotspotInScene?: () => { x: number; y: number } }).__assistantHotspotInScene?.(),
+    )
+    expect(center).toBeDefined()
+    expect(center!.x).toBeGreaterThan(280)
+    expect(center!.x).toBeLessThan(520)
+    expect(center!.y).toBeGreaterThan(400)
+    expect(center!.y).toBeLessThan(620)
+    expect(center!.y).toBeLessThan(876 * 0.72)
+  })
+
   test('点击助理热区聚焦右侧对话，不另开窗口', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('scene-viewport').locator('canvas').first().waitFor({ timeout: 15_000 })

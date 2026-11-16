@@ -33,7 +33,7 @@ npm run test:e2e
 
 - `docs/DESIGN.md` — 设计规格
 - `docs/动效说明.md`、`docs/设计报告.md`
-- `public/assets/scene/ambient-07.png` — 左侧场景（改稿 07）
+- `public/assets/scene/ambient-07.png` — 左侧场景（由 `01` 裁切视口 1346×876，无重复工具条）
 - `public/assets/interface/` — 界面对齐参考图
 - `LICENSE`（MIT）、`THIRD_PARTY_NOTICES`
 

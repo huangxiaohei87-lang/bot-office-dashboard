@@ -110,6 +110,9 @@ shell.querySelector('#btn-zoom-reset')?.addEventListener('click', () => scene.re
 ;(window as unknown as {
   __sceneRotation?: () => number
   __getAssistantScreenCenter?: () => { x: number; y: number } | null
+  __assistantHotspotInScene?: () => { x: number; y: number }
 }).__sceneRotation = () => scene.getSceneRotation()
 ;(window as unknown as { __getAssistantScreenCenter?: () => { x: number; y: number } | null }).__getAssistantScreenCenter =
   () => scene.getAssistantScreenCenter()
+;(window as unknown as { __assistantHotspotInScene?: () => { x: number; y: number } }).__assistantHotspotInScene =
+  () => scene.getHotspotSceneCenter()
