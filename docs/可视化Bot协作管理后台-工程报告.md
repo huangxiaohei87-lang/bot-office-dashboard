@@ -6,7 +6,7 @@
 
 - **目标仓库：** https://github.com/huangxiaohei87-lang/bot-office-dashboard
 - **功能分支：** `cursor/phase1-prototype-90f3` → `main`
-- **PR：** （创建后补全 URL，见下方「提交记录」）
+- **PR：** https://github.com/huangxiaohei87-lang/bot-office-dashboard/pull/1
 - **未合并 PR，未启用 GitHub Pages，未改仓库 Settings。**
 
 ## main 初始提交
