@@ -20,7 +20,7 @@ function renderShell(): HTMLElement {
             <div class="zoom-group">
               <button type="button" id="btn-zoom-out" aria-label="缩小">−</button>
               <button type="button" id="btn-zoom-in" aria-label="放大">+</button>
-              <button type="button" id="btn-zoom-reset">适应</button>
+              <button type="button" id="btn-zoom-reset" class="toolbar-fit">适应</button>
             </div>
             <span>画布可平移缩放，不可旋转</span>
           </div>
@@ -45,7 +45,7 @@ function renderShell(): HTMLElement {
               id="chat-input"
               data-testid="chat-input"
               type="text"
-              placeholder="给助理发消息..."
+              placeholder="给助理发消息…"
               autocomplete="off"
             />
           </div>
@@ -72,7 +72,11 @@ function renderMessages(container: HTMLElement) {
     if (Array.isArray(msg.text)) {
       for (const line of msg.text) {
         const p = document.createElement('p')
-        p.textContent = line
+        if (line.includes('审查闸门')) {
+          p.innerHTML = line.replaceAll('审查闸门', '<span class="phrase-nowrap">审查闸门</span>')
+        } else {
+          p.textContent = line
+        }
         bubble.appendChild(p)
       }
     } else {
@@ -110,9 +114,16 @@ shell.querySelector('#btn-zoom-reset')?.addEventListener('click', () => scene.re
 ;(window as unknown as {
   __sceneRotation?: () => number
   __getAssistantScreenCenter?: () => { x: number; y: number } | null
-  __assistantHotspotInScene?: () => { x: number; y: number }
+  __getAssistantHotspotScreenRect?: () => {
+    left: number
+    top: number
+    width: number
+    height: number
+    centerX: number
+    centerY: number
+  } | null
 }).__sceneRotation = () => scene.getSceneRotation()
 ;(window as unknown as { __getAssistantScreenCenter?: () => { x: number; y: number } | null }).__getAssistantScreenCenter =
   () => scene.getAssistantScreenCenter()
-;(window as unknown as { __assistantHotspotInScene?: () => { x: number; y: number } }).__assistantHotspotInScene =
-  () => scene.getHotspotSceneCenter()
+;(window as unknown as { __getAssistantHotspotScreenRect?: () => ReturnType<typeof scene.getHotspotScreenRect> })
+  .__getAssistantHotspotScreenRect = () => scene.getHotspotScreenRect()

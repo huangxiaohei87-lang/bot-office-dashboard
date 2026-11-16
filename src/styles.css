@@ -61,10 +61,10 @@ body {
 .dashboard-title {
   margin: 0;
   font-family: 'Noto Serif SC', serif;
-  font-weight: 600;
-  font-size: clamp(20px, 2.2vw, 26px);
+  font-weight: 500;
+  font-size: clamp(18px, 1.65vw, 22px);
   color: #171414;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.008em;
 }
 
 .dashboard-main {
@@ -79,7 +79,7 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: 18px 18px 0;
+  padding: 18px;
 }
 
 .scene-viewport-shell {
@@ -146,6 +146,25 @@ body {
 .scene-toolbar .zoom-group button {
   min-width: 36px;
   padding: 6px 10px;
+}
+
+.scene-toolbar .toolbar-fit {
+  min-width: auto;
+  padding: 6px 4px;
+  background: transparent;
+  border: none;
+  color: #737269;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.scene-toolbar .toolbar-fit:hover {
+  background: transparent;
+  color: #2a2923;
+}
+
+.phrase-nowrap {
+  white-space: nowrap;
 }
 
 .chat-column {
