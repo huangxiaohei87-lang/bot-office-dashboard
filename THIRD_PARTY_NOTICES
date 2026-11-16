@@ -1,0 +1,42 @@
+Third-Party Notices — bot-office-dashboard (phase 1 prototype)
+===============================================================
+
+This project includes or depends on the following third-party works.
+Retain these notices in distributions as required by each license.
+
+LeaferJS / leafer-ui
+--------------------
+- Package: leafer-ui (and @leafer-ui/*, @leafer/* transitive packages)
+- License: MIT
+- Repository: https://github.com/leaferjs/leafer-ui
+- Copyright: Chao (Leafer) Wan and contributors
+
+Vite
+----
+- License: MIT
+- https://github.com/vitejs/vite
+
+Playwright
+----------
+- License: Apache-2.0
+- https://github.com/microsoft/playwright
+(Dev dependency only; not shipped in production build.)
+
+Noto Serif SC / Noto Sans SC (via @fontsource)
+----------------------------------------------
+- License: SIL Open Font License 1.1
+- Copyright: Google LLC and respective authors
+- Full OFL text: see node_modules/@fontsource/noto-serif-sc/OFL.txt and
+  node_modules/@fontsource/noto-sans-sc/OFL.txt (copied references under docs/licenses/fonts/)
+
+Scene & interface artwork
+-------------------------
+- Original design deliverables for「可视化 Bot 协作管理后台」(改稿 07), committed under
+  public/assets/ and public/assets/interface/ for alignment and offline preview.
+- Kenney reference packs (CC0): license texts under docs/licenses/许可/ where applicable
+  as attribution/reference only; default scene uses design PNGs, not Kenney tile atlases.
+
+TypeScript
+----------
+- License: Apache-2.0
+- https://github.com/microsoft/TypeScript
