@@ -59,6 +59,7 @@ export interface SceneCanvas {
 }
 
 const TAP_DRAG_THRESHOLD_PX = 6
+const PRODUCT_EASE = { name: 'cubic-bezier' as const, value: [0.2, 0, 0, 1] as [number, number, number, number] }
 
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -133,7 +134,7 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
   const goHome = () => {
     viewState = 'overview'
     if (prefersReducedMotion()) app.tree.zoom('fit', 24)
-    else app.tree.zoom('fit', 24, undefined, { duration: 0.32, easing: 'ease-out' })
+    else app.tree.zoom('fit', 24, undefined, { duration: 0.32, easing: PRODUCT_EASE })
     requestAnimationFrame(syncAllHits)
   }
 
@@ -146,7 +147,7 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
     const region = regionById(room)
     const bounds = { x: region.x, y: region.y, width: region.width, height: region.height }
     if (prefersReducedMotion()) app.tree.zoom(bounds, 36)
-    else app.tree.zoom(bounds, 36, undefined, { duration: 0.32, easing: 'ease-out' })
+    else app.tree.zoom(bounds, 36, undefined, { duration: 0.32, easing: PRODUCT_EASE })
     requestAnimationFrame(syncAllHits)
   }
 
@@ -161,7 +162,7 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
       app.tree.zoom(bounds, 32)
       finish()
     } else {
-      app.tree.zoom(bounds, 32, undefined, { duration: 0.3, easing: 'ease-out' })
+      app.tree.zoom(bounds, 32, undefined, { duration: 0.3, easing: PRODUCT_EASE })
       window.setTimeout(finish, 360)
     }
     requestAnimationFrame(syncAllHits)

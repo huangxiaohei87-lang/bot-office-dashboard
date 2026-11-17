@@ -4,14 +4,12 @@ import path from 'node:path'
 import { expect, test } from '@playwright/test'
 
 const ARTIFACT_DIR = '/opt/cursor/artifacts'
-const TMP_DIR = '/workspace/tmp/用户测试反馈叠框'
 
-test.describe('用户测试反馈叠框（1920×1080）', () => {
+test.describe('正式动效叠框（1920×1080）', () => {
   test.use({ viewport: { width: 1920, height: 1080 } })
 
-  test('输出验收叠框', async ({ page }) => {
+  test('输出动效验收叠框', async ({ page }) => {
     fs.mkdirSync(ARTIFACT_DIR, { recursive: true })
-    fs.mkdirSync(TMP_DIR, { recursive: true })
 
     const outlineHits = () =>
       page.evaluate(() => {
@@ -25,9 +23,7 @@ test.describe('用户测试反馈叠框（1920×1080）', () => {
     const capture = async (name: string) => {
       await outlineHits()
       const file = path.join(ARTIFACT_DIR, `hotspot-overlay-${name}.png`)
-      const tmp = path.join(TMP_DIR, `hotspot-overlay-${name}.png`)
       await page.screenshot({ path: file, fullPage: false })
-      fs.copyFileSync(file, tmp)
       return createHash('sha256').update(fs.readFileSync(file)).digest('hex')
     }
 
@@ -41,48 +37,60 @@ test.describe('用户测试反馈叠框（1920×1080）', () => {
       })
     }
 
-    const roomCenter = async (room: 'app' | 'hr') => {
+    const tapRoom = async (room: 'app' | 'hr' | 'pantry') => {
       const c = await page.evaluate(
         (r) =>
           (window as unknown as { __getRoomScreenCenter?: (id: string) => { x: number; y: number } | null }).__getRoomScreenCenter?.(r),
         room,
       )
       expect(c).not.toBeNull()
-      return c!
+      await page.evaluate(
+        ({ x, y }) =>
+          (window as unknown as { __sceneTapAtClient?: (a: number, b: number) => void }).__sceneTapAtClient?.(x, y),
+        { x: c!.x, y: c!.y },
+      )
+      await page.waitForTimeout(400)
+    }
+
+    const clickCapsule = async () => {
+      const box = await page.getByTestId('look-home-capsule').boundingBox()
+      expect(box).not.toBeNull()
+      await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2)
+      await page.waitForTimeout(450)
     }
 
     await waitReady()
-    const hashFit = await capture('fit-default')
+    await capture('fit-default')
 
-    const appC = await roomCenter('app')
-    await page.mouse.move(appC.x, appC.y)
-    await page.mouse.down()
-    await page.mouse.move(appC.x - 130, appC.y + 80, { steps: 12 })
-    await page.mouse.up()
-    await page.waitForTimeout(450)
-    const hashPan = await capture('after-pan-on-app-room')
-    expect(hashPan).not.toBe(hashFit)
-
-    await page.mouse.move(appC.x, appC.y)
-    await page.mouse.wheel(0, -420)
-    await page.waitForTimeout(400)
-    const hashWheel = await capture('after-wheel-on-room')
-    expect(hashWheel).not.toBe(hashFit)
+    await tapRoom('app')
+    await page.waitForTimeout(360)
+    const hashAppSel = await capture('click-app-or-hr-selected')
+    const first = page.getByTestId('app-project-item-0')
+    await expect(first).toHaveClass(/panel-list__item--selected/)
 
     await waitReady()
-    const hrC = await roomCenter('hr')
-    await page.mouse.click(hrC.x, hrC.y)
-    await page.waitForTimeout(500)
-    const hashHr = await capture('click-hr-projects')
+    await tapRoom('pantry')
+    await capture('click-pantry-mistakes')
+
+    await waitReady()
+    await tapRoom('hr')
     await expect(page.getByTestId('look-home-capsule')).toBeVisible()
+    const hashCapsule = await capture('capsule-visible')
 
+    await clickCapsule()
+    await expect(page.getByTestId('look-home-capsule')).toBeHidden()
+    await expect(page.getByTestId('panel-hr-projects')).toBeVisible()
+    const hashAfterCapsule = await capture('after-capsule-click')
+    expect(hashAfterCapsule).not.toBe(hashCapsule)
+
+    await page.emulateMedia({ reducedMotion: 'reduce' })
     await waitReady()
-    const input = page.getByTestId('chat-input')
-    await input.fill('叠框验收：回车发送')
-    await input.press('Enter')
-    await page.waitForTimeout(200)
-    const hashChat = await capture('chat-after-enter-send')
-    expect(hashChat).not.toBe(hashHr)
-    expect(hashChat).not.toBe(hashFit)
+    await tapRoom('hr')
+    await expect(page.getByTestId('look-home-capsule')).toBeVisible()
+  const capAnim = await page.getByTestId('look-home-capsule').evaluate((el) => getComputedStyle(el).animationName)
+    expect(capAnim).toBe('none')
+    await capture('reduced-motion')
+
+    void hashAppSel
   })
 })

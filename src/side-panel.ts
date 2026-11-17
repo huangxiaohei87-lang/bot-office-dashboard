@@ -9,6 +9,8 @@ import {
 type ChatMessage = { from: 'user' | 'assistant'; text: string | string[] }
 
 const LOCAL_PREVIEW_REPLY = '这是页面内预览，不会转到真实助理对话。'
+const PANEL_ENTER_MS = 320
+const PANEL_EXIT_MS = 240
 
 export type SidePanelMode = 'chat' | 'app-projects' | 'hr-projects' | 'mistakes'
 
@@ -17,6 +19,10 @@ export interface SidePanelHandles {
   setMode: (mode: SidePanelMode, opts?: { assistantFocused?: boolean }) => void
   focusChatInput: () => void
   getMode: () => SidePanelMode
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
 function renderMessages(container: HTMLElement, messages: ChatMessage[]) {
@@ -47,28 +53,67 @@ function renderMessages(container: HTMLElement, messages: ChatMessage[]) {
   }
 }
 
-function projectRows(items: { title: string; meta: string }[]) {
+function projectRows(items: { title: string; meta: string }[], testPrefix: string) {
   return items
     .map(
-      (p) => `<li class="panel-list__item"><p class="panel-list__title">${p.title}</p><p class="panel-list__meta">${p.meta}</p></li>`,
+      (p, i) => `<li class="panel-list__item panel-list__item--reveal" data-testid="${testPrefix}-item-${i}" tabindex="0" role="button">
+        <p class="panel-list__title">${p.title}</p><p class="panel-list__meta">${p.meta}</p>
+        <span class="panel-list__selected-label">已选中</span></li>`,
     )
     .join('')
+}
+
+function bindProjectListSelection(container: ParentNode) {
+  const items = container.querySelectorAll<HTMLElement>('.panel-list__item')
+  if (!items.length) return
+  const select = (target: HTMLElement) => {
+    items.forEach((li) => li.classList.remove('panel-list__item--selected'))
+    target.classList.add('panel-list__item--selected')
+  }
+  select(items[0]!)
+  items.forEach((li) => {
+    li.addEventListener('click', () => select(li))
+    li.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault()
+        select(li)
+      }
+    })
+  })
 }
 
 export function createSidePanel(): SidePanelHandles {
   let mode: SidePanelMode = 'chat'
   let assistantFocused = false
+  let hasShownPanel = false
+  let animToken = 0
   const messages: ChatMessage[] = seedChatMessages.map((m) => ({ ...m, text: m.text }))
   const root = document.createElement('div')
   root.className = 'side-panel'
   root.dataset.testid = 'side-panel'
-  root.innerHTML = `<div class="side-panel__inner" id="side-panel-inner"></div>`
+  root.innerHTML = `<div class="side-panel__inner" id="side-panel-inner" data-testid="side-panel-inner"></div>`
   const inner = root.querySelector('#side-panel-inner')! as HTMLElement
+
+  const mountEnterAnimation = () => {
+    inner.classList.remove('side-panel__inner--exiting')
+    if (prefersReducedMotion()) {
+      inner.classList.remove('side-panel__inner--entering')
+      inner.removeAttribute('data-panel-entering')
+      return
+    }
+    inner.dataset.panelEntering = 'true'
+    inner.classList.add('side-panel__inner--entering')
+    window.setTimeout(() => {
+      inner.classList.remove('side-panel__inner--entering')
+      inner.removeAttribute('data-panel-entering')
+    }, PANEL_ENTER_MS + 40)
+  }
 
   const renderChat = () => {
     inner.className = 'side-panel__inner chat-card'
     inner.id = 'chat-card'
     inner.dataset.testid = 'chat-card'
+    inner.dataset.panelShell = 'side-panel-inner'
     const sub = assistantFocused ? '已聚焦，不会另外弹出聊天窗' : '常驻 · 点击场景中的助理会回到这里'
     inner.innerHTML = `
       <div class="chat-card__head"><div class="chat-card__head-row">
@@ -102,26 +147,33 @@ export function createSidePanel(): SidePanelHandles {
 
   const renderProjects = (which: 'app' | 'hr') => {
     const title = which === 'app' ? 'APP制作台做过的项目' : '人事部做过的项目'
+    const prefix = which === 'app' ? 'app-project' : 'hr-project'
     inner.className = 'side-panel__inner list-card'
     inner.removeAttribute('id')
     inner.dataset.testid = which === 'app' ? 'panel-app-projects' : 'panel-hr-projects'
+    inner.dataset.panelShell = 'side-panel-inner'
     inner.innerHTML = `
       <div class="list-card__head"><h2 class="panel-title">${title}</h2>
       <p class="panel-sub">示例数据 · 第一期本地示例 · 非真实接口</p></div>
-      <ul class="panel-list">${projectRows(which === 'app' ? appProjects : hrProjects)}</ul>
+      <ul class="panel-list">${projectRows(which === 'app' ? appProjects : hrProjects, prefix)}</ul>
       <p class="panel-footnote">本列表为方案示例，不是真实项目接口，也不是多会话列表。</p>`
+    bindProjectListSelection(inner)
   }
 
   const renderMistakes = () => {
     inner.className = 'side-panel__inner list-card'
     inner.removeAttribute('id')
     inner.dataset.testid = 'panel-mistakes'
+    inner.dataset.panelShell = 'side-panel-inner'
     const summaries = pantryMistakeSummaries
-      .map((s) => `<div class="mistake-summary"><p class="panel-list__meta">${s.label}</p><p class="panel-list__title">${s.body}</p></div>`)
+      .map(
+        (s, i) =>
+          `<div class="mistake-summary panel-list__item--reveal" data-testid="mistake-summary-${i}"><p class="panel-list__meta">${s.label}</p><p class="panel-list__title">${s.body}</p></div>`,
+      )
       .join('')
     const rows = pantryMistakes
       .map(
-        (m) => `<li class="panel-list__item panel-list__item--mistake"><span class="avatar-block avatar-block--soft">${m.icon}</span>
+        (m, i) => `<li class="panel-list__item panel-list__item--mistake panel-list__item--reveal" data-testid="mistake-item-${i}"><span class="avatar-block avatar-block--soft">${m.icon}</span>
         <div><p class="panel-list__title">${m.title}</p><p class="panel-list__meta">${m.meta}</p></div></li>`,
       )
       .join('')
@@ -132,7 +184,7 @@ export function createSidePanel(): SidePanelHandles {
       <ul class="panel-list panel-list--mistakes">${rows}</ul>`
   }
 
-  const setMode = (next: SidePanelMode, opts?: { assistantFocused?: boolean }) => {
+  const swapPanel = (next: SidePanelMode, opts?: { assistantFocused?: boolean }) => {
     mode = next
     if (opts?.assistantFocused !== undefined) assistantFocused = opts.assistantFocused
     inner.classList.remove('chat-card--focused')
@@ -140,6 +192,33 @@ export function createSidePanel(): SidePanelHandles {
     else if (next === 'app-projects') renderProjects('app')
     else if (next === 'hr-projects') renderProjects('hr')
     else renderMistakes()
+    mountEnterAnimation()
+  }
+
+  const setMode = (next: SidePanelMode, opts?: { assistantFocused?: boolean }) => {
+    if (next === mode && opts?.assistantFocused === undefined) {
+      if (next === 'chat') renderChat()
+      return
+    }
+    const token = ++animToken
+    const reduced = prefersReducedMotion()
+
+    if (!hasShownPanel) {
+      hasShownPanel = true
+      swapPanel(next, opts)
+      return
+    }
+
+    if (reduced) {
+      swapPanel(next, opts)
+      return
+    }
+
+    inner.classList.add('side-panel__inner--exiting')
+    window.setTimeout(() => {
+      if (token !== animToken) return
+      swapPanel(next, opts)
+    }, PANEL_EXIT_MS)
   }
 
   const focusChatInput = () => {

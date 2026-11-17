@@ -391,7 +391,71 @@ test.describe('可视化 Bot 协作管理后台 — 第一期', () => {
     await expect(page.getByTestId('panel-mistakes')).toHaveCount(0)
   })
 
-  test('prefers-reduced-motion 下无拖拽惯性、胶囊无跳动', async ({ page }) => {
+  test('右栏切入：切换后带 entering 类', async ({ page }) => {
+    await waitHotspotReady(page)
+    await clickRoomCenter(page, 'app')
+    await page.waitForTimeout(600)
+    const center = await page.evaluate(() =>
+      (window as unknown as { __getRoomScreenCenter?: (id: string) => { x: number; y: number } | null }).__getRoomScreenCenter?.('hr'),
+    )
+    expect(center).not.toBeNull()
+    await page.evaluate(
+      ({ x, y }) =>
+        (window as unknown as { __sceneTapAtClient?: (a: number, b: number) => void }).__sceneTapAtClient?.(x, y),
+      { x: center!.x, y: center!.y },
+    )
+    await expect
+      .poll(
+        async () =>
+          (await page.locator('[data-panel-shell="side-panel-inner"]').getAttribute('data-panel-entering')) === 'true',
+        { timeout: 8000 },
+      )
+      .toBe(true)
+    await page.waitForTimeout(380)
+    await expect(page.getByTestId('panel-hr-projects')).toBeVisible()
+  })
+
+  test('项目列表条目出现与选中（墨条 + 已选中）', async ({ page }) => {
+    await waitHotspotReady(page)
+    await clickRoomCenter(page, 'app')
+    const first = page.getByTestId('app-project-item-0')
+    await expect(first).toHaveClass(/panel-list__item--selected/)
+    await expect(first.getByText('已选中')).toBeVisible()
+    const anim = await first.evaluate((el) => getComputedStyle(el).animationName)
+    expect(anim).toContain('panel-item-reveal')
+    await first.click()
+    await expect(first).toHaveClass(/panel-list__item--selected/)
+  })
+
+  test('胶囊 translateY 位移动画约 0.9s', async ({ page }) => {
+    await waitHotspotReady(page)
+    await clickRoomCenter(page, 'hr')
+    await expect(page.getByTestId('look-home-capsule')).toBeVisible()
+    const capStyle = await page.getByTestId('look-home-capsule').evaluate((el) => {
+      const s = getComputedStyle(el)
+      return { animationName: s.animationName, animationDuration: s.animationDuration }
+    })
+    expect(capStyle.animationName).toContain('look-home-capsule-bounce')
+    expect(parseFloat(capStyle.animationDuration)).toBeGreaterThanOrEqual(0.85)
+    expect(parseFloat(capStyle.animationDuration)).toBeLessThanOrEqual(0.95)
+    const keyframesUseTranslateY = await page.evaluate(() => {
+      for (const sheet of document.styleSheets) {
+        try {
+          for (const rule of sheet.cssRules) {
+            if (rule instanceof CSSKeyframesRule && rule.name === 'look-home-capsule-bounce') {
+              return [...rule.cssRules].some((r) => r.cssText.includes('translateY(-5px)'))
+            }
+          }
+        } catch {
+          /* cross-origin sheet */
+        }
+      }
+      return false
+    })
+    expect(keyframesUseTranslateY).toBe(true)
+  })
+
+  test('prefers-reduced-motion 下无拖拽惯性、胶囊不跳动', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await waitHotspotReady(page)
     expect(await page.evaluate(() => (window as unknown as { __getMoveDragAnimate?: () => boolean }).__getMoveDragAnimate?.())).toBe(
