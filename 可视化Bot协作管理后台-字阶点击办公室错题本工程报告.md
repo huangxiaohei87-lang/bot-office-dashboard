@@ -2,7 +2,7 @@
 
 - **PR：** https://github.com/huangxiaohei87-lang/bot-office-dashboard/pull/1  
 - **分支：** `cursor/phase1-prototype-90f3` → `main`  
-- **head SHA：** （推送后由 `git log -1 --format=%H` 核对）  
+- **head SHA：** `41b060cf59c9f583a4d13302b795eca56d20fb45`  
 - **Pages / 合并：** 均未执行  
 
 ## 平移 / 缩放回归

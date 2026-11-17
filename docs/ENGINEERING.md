@@ -5,7 +5,7 @@
 ## 当前状态
 
 - **分支：** `cursor/phase1-prototype-90f3` → `main`（[PR #1](https://github.com/huangxiaohei87-lang/bot-office-dashboard/pull/1)，未合并）
-- **head SHA：** 见本文件文末 `git rev-parse HEAD` 输出（推送到 GitHub 后以此为准）
+- **head SHA：** `41b060cf59c9f583a4d13302b795eca56d20fb45`（父提交 `e571d820e819e51abb5216bcb59f9fa0ebb17497`）
 - **GitHub Pages：** 未启用
 
 ## 相机 / 平移 / 缩放（回归修复）
