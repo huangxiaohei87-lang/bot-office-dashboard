@@ -68,6 +68,8 @@ type SceneWindow = {
   __getSceneViewState?: () => string
   __getRoomScreenCenter?: (room: ClickableRoomId) => { x: number; y: number } | null
   __getTreeState?: () => { x: number; y: number; scale: number }
+  __getHomeHitsVisibility?: () => ReturnType<SceneCanvas['getHomeHitsVisibility']>
+  __isLookHomeCapsuleVisible?: () => boolean
 }
 
 const w = window as unknown as SceneWindow
@@ -80,3 +82,5 @@ w.__getSidePanelMode = () => sidePanel.getMode()
 w.__getSceneViewState = () => scene.getViewState()
 w.__getRoomScreenCenter = (room) => scene.getRoomScreenCenter(room)
 w.__getTreeState = () => scene.getTreeState()
+w.__getHomeHitsVisibility = () => scene.getHomeHitsVisibility()
+w.__isLookHomeCapsuleVisible = () => scene.isLookHomeCapsuleVisible()

@@ -53,9 +53,14 @@ export function unionBounds(...rects: BoundsRect[]): BoundsRect {
   return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 }
 }
 
-/** Focus zoom must keep boss office + assistant visible when drilling into app/hr/pantry. */
+/** 「看向老大办公室」胶囊：仅拉近 boss ∪ 助理，不改变房间放大态。 */
+export function homeAnchorBounds(): BoundsRect {
+  const boss = regionById('boss')
+  return unionBounds(boss, ASSISTANT_HOTSPOT)
+}
+
+/** 并集工具（房间∩回家点）；不再用于 focusRoom 默认取景。 */
 export function focusUnionBounds(room: Exclude<ClickableRoomId, 'boss'>): BoundsRect {
   const region = regionById(room)
-  const boss = regionById('boss')
-  return unionBounds(region, boss, ASSISTANT_HOTSPOT)
+  return unionBounds(region, regionById('boss'), ASSISTANT_HOTSPOT)
 }

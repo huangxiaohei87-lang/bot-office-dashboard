@@ -1,50 +1,33 @@
 # 可视化 Bot 协作管理后台 — 技术说明（草稿）
 
-> 正式交付报告由工程在云电脑写入 `可视化Bot协作管理后台-字阶点击办公室错题本工程报告.md`。本文件为仓库内可版本化的技术草稿。
+> 正式交付报告由工程在云电脑写入 `可视化Bot协作管理后台-字阶点击办公室错题本工程报告.md`。
 
 ## 当前状态
 
 - **分支：** `cursor/phase1-prototype-90f3` → `main`（[PR #1](https://github.com/huangxiaohei87-lang/bot-office-dashboard/pull/1)，未合并）
-- **head SHA：** `a7e65c307cd0a5d8e4bb00f3efdaefd31b8a4464`（返工基准曾校验 `43f6fc46cd9080ca212f7cb6d62c291a83eae489`）
-- **GitHub Pages：** 未启用（`has_pages: false`）
+- **head SHA：** 见 GitHub PR（返工补充：近距房间取景 + 看向胶囊）
+- **GitHub Pages：** 未启用
 
-## 取景（focusRoom 并集）
+## 取景（近距房间 + 看向胶囊）
 
-点 **APP制作台 / 人事部 / 茶水间** 时，`focusRoom` 对 Leafer `zoom(bounds, 36)` 的 `bounds` 为场景坐标下三矩形并集：
+- **点 APP / 人事部 / 茶水间：** `focusRoom` 仅对被点房间 `region` 做 `zoom(bounds, 36)`（与并集拉远之前一致）。回家点可暂时在视口外。
+- **点老大办公室：** `goHome()` → `zoom('fit', 24)`。
+- **看向胶囊（`look-home-capsule`）：** 非 `overview` 且 boss / 助理热区任一不可点（可见边 &lt; 24px 或面积交集 &lt; 80%）时在 `#scene-viewport` 右下角显示；点按后对 `homeAnchorBounds()`（boss ∪ `ASSISTANT_HOTSPOT`）做 `zoom(bounds, 32)`，**不改** `viewState` 与右栏。动画 `0.3s ease-out`；`prefers-reduced-motion` 无动画。胶囊显隐随 `RenderEvent`、平移、滚轮、按钮缩放后重算。
+- `focusUnionBounds` 仍保留，**不**用于 `focusRoom`。
 
-1. 被点房间 `ROOM_HIT_REGIONS` 项  
-2. **老大办公室**（`boss`）  
-3. **`ASSISTANT_HOTSPOT`**（常量未改）
+## 相机 / 平移 / 缩放
 
-实现：`focusUnionBounds(room)` = `unionBounds(region, boss, ASSISTANT_HOTSPOT)`（`src/scene-constants.ts`）。动画仍为 `duration: 0.32`、`easing: 'ease-out'`；`prefers-reduced-motion` 下无 duration。点 **老大办公室** 仍走 `goHome()` → `zoom('fit', 24)`。
+- `@leafer-in/view` + `@leafer-in/viewport` **1.12.x**；DOM 热区与 `app.tree` 同步。
 
-茶水间并集横跨右侧茶水间与左侧回家点，取景较宽属预期。
+## 字阶（保持不变）
 
-## 相机 / 平移 / 缩放（保留）
+- 工具条 12/20；Noto Serif 700 → `noto-serif-sc-chinese-simplified-700-normal.woff2`；栏标题 `.panel-title` 18/28 `#2A2923`。
 
-- `@leafer-in/view` + `@leafer-in/viewport` **1.12.x**；`tree: { type: 'viewport' }`。
-- DOM 热区用 `app.tree` 的 `x` / `y` / `scaleX` 与 scene-local Rect 同步。
+## E2E
 
-### 验证（Playwright，不先点「适应」）
+- `CI=1 npm run test:e2e`；预览 `http://127.0.0.1:4173`。
+- 人事部 / 茶水间放大态断言胶囊 → 点胶囊回家点可点 → 再点热区回对话；APP 按需胶囊。
 
-- `npm run build && CI=1 npm run test:e2e`（19/19）
-- 三间房放大态断言助理 / 老大办公室热区与 `#scene-viewport` 交集 ≥80% 面积、可见边 ≥24 CSS px；从三态在视口内点回家（无 `force:true`）。
-- **预览：** `http://127.0.0.1:4173`（Playwright `webServer`）
+## Artifacts
 
-## 字阶
-
-- 工具条 `.scene-toolbar` / `button`：**12px / 20px**，`#6E6C65`（说明与「适应」）。
-- Noto Serif SC：**400** → `noto-serif-sc-chinese-simplified-400-normal.woff2`；**700** → `noto-serif-sc-chinese-simplified-700-normal.woff2`（`node_modules/@fontsource/noto-serif-sc/files/...`）。
-- 右栏「与助理的对话」：`h2.panel-title` **18/28 Bold `#2A2923`**；已移除误导性的 `.chat-card__title` 17px 规则。
-
-## 叠框 Artifacts（1920×1080）
-
-路径：`/opt/cursor/artifacts/hotspot-overlay-*.png`
-
-- `fit-default`、`after-pan`、`after-zoom-in`、`after-wheel-zoom`
-- `click-app-projects`、`click-hr-projects`、`click-pantry-mistakes`
-- `click-home-from-hr`、`click-home-from-pantry`（各与对应放大态截图哈希不同；已弃用无效的 `click-boss-home-chat`）
-
-## 未做
-
-- 真实 API、错题采集、Motion、合并、Pages
+`hotspot-overlay-{fit-default,after-pan,after-zoom-in,after-wheel-zoom,click-app-projects,click-hr-projects,click-pantry-mistakes,click-capsule-from-hr,click-capsule-from-pantry,click-home-from-hr,click-home-from-pantry}`（APP 若有胶囊则另含 `click-capsule-from-app`）

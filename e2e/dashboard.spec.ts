@@ -46,7 +46,7 @@ async function panOnDarkMargin(page: import('@playwright/test').Page) {
   await page.waitForTimeout(400)
 }
 
-async function assertHomeHitsInViewport(page: import('@playwright/test').Page) {
+async function assertHomeHitsClickable(page: import('@playwright/test').Page) {
   const v = await page.evaluate(() => {
     const vp = document.getElementById('scene-viewport')!.getBoundingClientRect()
     const measure = (sel: string) => {
@@ -78,6 +78,22 @@ async function clickHomeHitInViewport(page: import('@playwright/test').Page) {
   expect(box).not.toBeNull()
   await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2)
   await page.waitForTimeout(400)
+}
+
+async function clickLookHomeCapsule(page: import('@playwright/test').Page) {
+  const box = await page.getByTestId('look-home-capsule').boundingBox()
+  expect(box).not.toBeNull()
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.waitForTimeout(450)
+}
+
+async function lookHomeViaCapsuleIfNeeded(page: import('@playwright/test').Page) {
+  const capsule = page.getByTestId('look-home-capsule')
+  if (await capsule.isVisible()) {
+    await clickLookHomeCapsule(page)
+    await expect(capsule).toBeHidden()
+  }
+  await assertHomeHitsClickable(page)
 }
 
 async function clickRoomCenter(page: import('@playwright/test').Page, room: 'app' | 'hr' | 'pantry' | 'boss') {
@@ -203,61 +219,58 @@ test.describe('可视化 Bot 协作管理后台 — 第一期', () => {
     expect(rotation).toBe(0)
   })
 
-  test('点 APP制作台：左侧放大且右侧项目列表，回家点仍在视口', async ({ page }) => {
+  test('点 APP制作台：近距放大与项目列表，按需胶囊后回对话', async ({ page }) => {
     await waitHotspotReady(page)
     await clickRoomCenter(page, 'app')
-    await assertHomeHitsInViewport(page)
     await expect(page.getByTestId('panel-app-projects')).toBeVisible()
     await expect(page.getByText('贪吃蛇网页游戏试点')).toBeVisible()
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe('app')
+    await lookHomeViaCapsuleIfNeeded(page)
+    await clickHomeHitInViewport(page)
+    await expect(page.getByTestId('chat-messages')).toBeVisible({ timeout: 10_000 })
+    expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe('chat')
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe(
+      'overview',
+    )
   })
 
-  test('点人事部：项目列表且回家点仍在视口', async ({ page }) => {
+  test('点人事部：胶囊看向回家点后仍为人事列表，再点助理回对话', async ({ page }) => {
     await waitHotspotReady(page)
     await clickRoomCenter(page, 'hr')
-    await assertHomeHitsInViewport(page)
     await expect(page.getByTestId('panel-hr-projects')).toBeVisible()
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe('hr')
+    await expect(page.getByTestId('look-home-capsule')).toBeVisible()
+    await clickLookHomeCapsule(page)
+    await assertHomeHitsClickable(page)
+    await expect(page.getByTestId('look-home-capsule')).toBeHidden()
+    expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe(
+      'hr-projects',
+    )
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe('hr')
+    await clickHomeHitInViewport(page)
+    await expect(page.getByTestId('chat-messages')).toBeVisible({ timeout: 10_000 })
+    expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe('chat')
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe(
+      'overview',
+    )
   })
 
-  test('点茶水间：错题本且回家点仍在视口', async ({ page }) => {
+  test('点茶水间：胶囊看向回家点后仍为错题本，再点老大办公室回对话', async ({ page }) => {
     await waitHotspotReady(page)
     await clickRoomCenter(page, 'pantry')
-    await assertHomeHitsInViewport(page)
     await expect(page.getByTestId('panel-mistakes')).toBeVisible()
     await expect(page.getByText('茶水间错题本')).toBeVisible()
     await expect(page.getByTestId('chat-input')).toHaveCount(0)
-  })
-
-  test('从 APP 放大态点助理回家：恢复对话', async ({ page }) => {
-    await waitHotspotReady(page)
-    await clickRoomCenter(page, 'app')
-    await assertHomeHitsInViewport(page)
-    await clickHomeHitInViewport(page)
-    await page.waitForTimeout(400)
-    await expect(page.getByTestId('chat-messages')).toBeVisible({ timeout: 10_000 })
-    expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe('chat')
     expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe(
-      'overview',
+      'pantry',
     )
-    await expect(page.getByRole('heading', { name: '与助理的对话' })).toBeVisible()
-  })
-
-  test('从人事部放大态点助理回家：恢复对话', async ({ page }) => {
-    await waitHotspotReady(page)
-    await clickRoomCenter(page, 'hr')
-    await assertHomeHitsInViewport(page)
-    await clickHomeHitInViewport(page)
-    await page.waitForTimeout(400)
-    await expect(page.getByTestId('chat-messages')).toBeVisible({ timeout: 10_000 })
-    expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe('chat')
-    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe(
-      'overview',
+    await expect(page.getByTestId('look-home-capsule')).toBeVisible()
+    await clickLookHomeCapsule(page)
+    await assertHomeHitsClickable(page)
+    await expect(page.getByTestId('look-home-capsule')).toBeHidden()
+    expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe(
+      'mistakes',
     )
-  })
-
-  test('从茶水间放大态点老大办公室回家：恢复对话', async ({ page }) => {
-    await waitHotspotReady(page)
-    await clickRoomCenter(page, 'pantry')
-    await assertHomeHitsInViewport(page)
     const boss = await page.getByTestId('room-hit-boss').boundingBox()
     expect(boss).not.toBeNull()
     await page.mouse.click(boss!.x + boss!.width / 2, boss!.y + boss!.height / 2)
@@ -301,14 +314,19 @@ test.describe('可视化 Bot 协作管理后台 — 第一期', () => {
     await expect(page.getByTestId('panel-mistakes')).toHaveCount(0)
   })
 
-  test('prefers-reduced-motion 下页面仍可用', async ({ page }) => {
+  test('prefers-reduced-motion 下胶囊无跳动且看向回家点仍正确', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await waitHotspotReady(page)
-    const center = await page.evaluate(() =>
-      (window as unknown as { __getRoomScreenCenter?: (r: string) => { x: number; y: number } | null }).__getRoomScreenCenter?.('pantry'),
+    await clickRoomCenter(page, 'hr')
+    const capsule = page.getByTestId('look-home-capsule')
+    await expect(capsule).toBeVisible()
+    const anim = await capsule.evaluate((el) => getComputedStyle(el).animationName)
+    expect(anim).toBe('none')
+    await clickLookHomeCapsule(page)
+    await assertHomeHitsClickable(page)
+    expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe(
+      'hr-projects',
     )
-    await page.mouse.click(center!.x, center!.y)
-    await page.waitForTimeout(300)
-    await expect(page.getByTestId('panel-mistakes')).toBeVisible()
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe('hr')
   })
 })

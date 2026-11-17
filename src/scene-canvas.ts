@@ -6,7 +6,8 @@ import {
   ASSISTANT_HOTSPOT,
   type ClickableRoomId,
   ROOM_HIT_REGIONS,
-  focusUnionBounds,
+  homeAnchorBounds,
+  regionById,
   SCENE_H,
   SCENE_W,
 } from './scene-constants'
@@ -30,17 +31,26 @@ export interface SceneCanvasCallbacks {
   onRoomFocus: (room: ClickableRoomId) => void
 }
 
+export interface HomeHitVisibility {
+  frac: number
+  visibleWidth: number
+  visibleHeight: number
+}
+
 export interface SceneCanvas {
   app: App
   zoomBy: (delta: number) => void
   resetView: () => void
   goHome: () => void
   focusRoom: (room: ClickableRoomId) => void
+  lookTowardHome: () => void
   getViewState: () => ViewState
   getSceneRotation: () => number
   getHotspotScreenRect: () => HotspotScreenRect | null
   getAssistantScreenCenter: () => { x: number; y: number } | null
   getRoomScreenCenter: (room: ClickableRoomId) => { x: number; y: number } | null
+  getHomeHitsVisibility: () => { assistant: HomeHitVisibility; boss: HomeHitVisibility }
+  isLookHomeCapsuleVisible: () => boolean
   sampleWorldAtClient: (clientX: number, clientY: number) => { x: number; y: number }
   getCameraScale: () => number
   getTreeState: () => { x: number; y: number; scale: number }
@@ -108,9 +118,27 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
       return
     }
     viewState = room
-    const bounds = focusUnionBounds(room)
+    const region = regionById(room)
+    const bounds = { x: region.x, y: region.y, width: region.width, height: region.height }
     if (prefersReducedMotion()) app.tree.zoom(bounds, 36)
     else app.tree.zoom(bounds, 36, undefined, { duration: 0.32, easing: 'ease-out' })
+    requestAnimationFrame(syncAllHits)
+  }
+
+  const lookTowardHome = () => {
+    if (viewState === 'overview') return
+    const bounds = homeAnchorBounds()
+    const finish = () => {
+      syncAllHits()
+      updateLookHomeCapsule()
+    }
+    if (prefersReducedMotion()) {
+      app.tree.zoom(bounds, 32)
+      finish()
+    } else {
+      app.tree.zoom(bounds, 32, undefined, { duration: 0.3, easing: 'ease-out' })
+      window.setTimeout(finish, 360)
+    }
     requestAnimationFrame(syncAllHits)
   }
 
@@ -181,6 +209,49 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
   })
   mount.appendChild(hitButton)
 
+  const lookHomeCapsule = document.createElement('button')
+  lookHomeCapsule.type = 'button'
+  lookHomeCapsule.className = 'look-home-capsule'
+  lookHomeCapsule.dataset.testid = 'look-home-capsule'
+  lookHomeCapsule.textContent = '看向老大办公室'
+  lookHomeCapsule.hidden = true
+  lookHomeCapsule.addEventListener('click', (ev) => {
+    ev.stopPropagation()
+    lookTowardHome()
+  })
+  mount.appendChild(lookHomeCapsule)
+
+  const measureElementInViewport = (el: HTMLElement): HomeHitVisibility => {
+    const vp = mount.getBoundingClientRect()
+    const r = el.getBoundingClientRect()
+    const iw = Math.max(0, Math.min(r.right, vp.right) - Math.max(r.left, vp.left))
+    const ih = Math.max(0, Math.min(r.bottom, vp.bottom) - Math.max(r.top, vp.top))
+    const inter = iw * ih
+    const area = Math.max(r.width * r.height, 1)
+    return { frac: inter / area, visibleWidth: iw, visibleHeight: ih }
+  }
+
+  const getHomeHitsVisibility = () => {
+    const bossBtn = roomHits.find((r) => r.id === 'boss')!.button
+    return {
+      assistant: measureElementInViewport(hitButton),
+      boss: measureElementInViewport(bossBtn),
+    }
+  }
+
+  const homeHitsFullyClickable = () => {
+    const { assistant, boss } = getHomeHitsVisibility()
+    const ok = (h: HomeHitVisibility) => h.visibleWidth >= 24 && h.visibleHeight >= 24 && h.frac >= 0.8
+    return ok(assistant) && ok(boss)
+  }
+
+  const updateLookHomeCapsule = () => {
+    const show = viewState !== 'overview' && !homeHitsFullyClickable()
+    lookHomeCapsule.hidden = !show
+  }
+
+  const isLookHomeCapsuleVisible = () => !lookHomeCapsule.hidden
+
   const syncRectButton = (rect: Rect, button: HTMLElement) => {
     const w = rect.width ?? 0
     const h = rect.height ?? 0
@@ -199,6 +270,7 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
   const syncAllHits = () => {
     syncRectButton(assistantHit, hitButton)
     for (const { rect, button } of roomHits) syncRectButton(rect, button)
+    updateLookHomeCapsule()
   }
 
   const getCameraScale = () => app.tree.scaleX ?? 1
@@ -278,7 +350,10 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
     resetView: fit,
     goHome,
     focusRoom,
+    lookTowardHome,
     getViewState: () => viewState,
+    getHomeHitsVisibility,
+    isLookHomeCapsuleVisible,
     getSceneRotation: () => content.rotation ?? 0,
     getHotspotScreenRect,
     getAssistantScreenCenter,

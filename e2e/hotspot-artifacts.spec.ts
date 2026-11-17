@@ -16,6 +16,8 @@ test.describe('热区叠框截图（1920×1080）', () => {
         document.querySelectorAll('[data-testid="assistant-scene-hit"], [data-testid^="room-hit-"]').forEach((el) => {
           ;(el as HTMLElement).style.outline = '3px solid #e85d5d'
         })
+        const cap = document.querySelector('[data-testid="look-home-capsule"]') as HTMLElement | null
+        if (cap && !cap.hidden) cap.style.outline = '3px solid #e85d5d'
       })
 
     const capture = async (name: string) => {
@@ -25,10 +27,30 @@ test.describe('热区叠框截图（1920×1080）', () => {
       return createHash('sha256').update(fs.readFileSync(file)).digest('hex')
     }
 
-    const clickHomeInViewport = async () => {
-      const assistant = await page.getByTestId('assistant-scene-hit').boundingBox()
-      expect(assistant).not.toBeNull()
-      await page.mouse.click(assistant!.x + assistant!.width / 2, assistant!.y + assistant!.height / 2)
+    const clickRoom = async (room: 'app' | 'hr' | 'pantry') => {
+      const c = await page.evaluate(
+        (r) =>
+          (window as unknown as { __getRoomScreenCenter?: (id: string) => { x: number; y: number } | null }).__getRoomScreenCenter?.(r),
+        room,
+      )
+      expect(c).not.toBeNull()
+      await page.mouse.click(c!.x, c!.y)
+      await page.waitForTimeout(500)
+    }
+
+    const clickCapsuleIfVisible = async () => {
+      const cap = page.getByTestId('look-home-capsule')
+      await expect(cap).toBeVisible({ timeout: 5000 })
+      const box = await cap.boundingBox()
+      expect(box).not.toBeNull()
+      await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2)
+      await page.waitForTimeout(450)
+    }
+
+    const clickAssistantHome = async () => {
+      const a = await page.getByTestId('assistant-scene-hit').boundingBox()
+      expect(a).not.toBeNull()
+      await page.mouse.click(a!.x + a!.width / 2, a!.y + a!.height / 2)
       await page.waitForTimeout(450)
       await expect(page.getByRole('heading', { name: '与助理的对话' })).toBeVisible()
     }
@@ -72,39 +94,41 @@ test.describe('热区叠框截图（1920×1080）', () => {
     const hashWheel = await capture('after-wheel-zoom')
     expect(hashWheel).not.toBe(hashFit)
 
-    const clickRoom = async (room: 'app' | 'hr' | 'pantry') => {
-      const c = await page.evaluate(
-        (r) =>
-          (window as unknown as { __getRoomScreenCenter?: (id: string) => { x: number; y: number } | null }).__getRoomScreenCenter?.(r),
-        room,
-      )
-      expect(c).not.toBeNull()
-      await page.mouse.click(c!.x, c!.y)
-      await page.waitForTimeout(500)
-    }
-
     await page.reload()
     await page.waitForTimeout(800)
     await clickRoom('app')
-    await capture('click-app-projects')
+    const hashAppZoom = await capture('click-app-projects')
+  const appCapVisible = await page.getByTestId('look-home-capsule').isVisible()
+    let hashAppCapsule: string | null = null
+    if (appCapVisible) {
+      await clickCapsuleIfVisible()
+      hashAppCapsule = await capture('click-capsule-from-app')
+      expect(hashAppCapsule).not.toBe(hashAppZoom)
+    }
 
     await page.reload()
     await page.waitForTimeout(800)
     await clickRoom('hr')
     const hashHrZoom = await capture('click-hr-projects')
-    await clickHomeInViewport()
-    const hashHomeFromHr = await capture('click-home-from-hr')
-    expect(hashHomeFromHr).not.toBe(hashHrZoom)
+    await clickCapsuleIfVisible()
+    const hashHrCapsule = await capture('click-capsule-from-hr')
+    expect(hashHrCapsule).not.toBe(hashHrZoom)
+    await clickAssistantHome()
+    const hashHomeHr = await capture('click-home-from-hr')
+    expect(hashHomeHr).not.toBe(hashHrZoom)
+    expect(hashHomeHr).not.toBe(hashHrCapsule)
 
     await page.reload()
     await page.waitForTimeout(800)
     await clickRoom('pantry')
     const hashPantryZoom = await capture('click-pantry-mistakes')
-    await clickHomeInViewport()
-    const hashHomeFromPantry = await capture('click-home-from-pantry')
-    expect(hashHomeFromPantry).not.toBe(hashPantryZoom)
-
-    const legacy = path.join(ARTIFACT_DIR, 'hotspot-overlay-click-boss-home-chat.png')
-    if (fs.existsSync(legacy)) fs.unlinkSync(legacy)
+    await clickCapsuleIfVisible()
+    const hashPantryCapsule = await capture('click-capsule-from-pantry')
+    expect(hashPantryCapsule).not.toBe(hashPantryZoom)
+    await clickAssistantHome()
+    const hashHomePantry = await capture('click-home-from-pantry')
+    expect(hashHomePantry).not.toBe(hashPantryZoom)
+    expect(hashHomePantry).not.toBe(hashPantryCapsule)
+    if (hashAppCapsule) expect(hashHomePantry).not.toBe(hashAppCapsule)
   })
 })
