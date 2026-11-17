@@ -11,6 +11,20 @@ LeaferJS / leafer-ui
 - Repository: https://github.com/leaferjs/leafer-ui
 - Copyright: Chao (Leafer) Wan and contributors
 
+@leafer-in/view (view / zoom plugin)
+------------------------------------
+- Package: @leafer-in/view
+- License: MIT
+- Repository: https://github.com/leaferjs/leafer-in
+- Required for fit / pan / zoom; imported in src/scene-canvas.ts
+
+@leafer-in/viewport
+-------------------
+- Package: @leafer-in/viewport
+- License: MIT
+- Repository: https://github.com/leaferjs/leafer-in
+- Pan/zoom wheel on viewport tree; imported in src/scene-canvas.ts
+
 Vite
 ----
 - License: MIT

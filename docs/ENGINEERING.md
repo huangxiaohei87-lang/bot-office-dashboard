@@ -1,28 +1,51 @@
-# 工程说明（第一期原型）
+# 可视化 Bot 协作管理后台 — 技术说明（草稿）
 
-## 实现概要
+> 正式交付报告由工程在云电脑写入 `可视化Bot协作管理后台-字阶点击办公室错题本工程报告.md`。本文件为仓库内可版本化的技术草稿。
 
-- **外壳：** CSS 实现纸白色板（`#FEFEFE` / `#F4F2EE`），窗口圆角 18px，右侧 480px 圆角对话卡片，内缩 18px。
-- **场景：** `ambient-07.png` 为 `01-左侧场景氛围.png` 裁切视口内景（`42,42`–`1388,918`，1346×876，角部填 `#101010`），不含稿内纸白条/烘焙工具条；外壳与平移缩放条仅 CSS/HTML。置于 Leafer，视口 `#101010`、16px 圆角。
-- **交互：** 平移（拖拽画布）、缩放（滚轮与 ± 按钮）；`wheel.rotateSpeed = 0` 禁止旋转。助理 DOM 热区经 `getWorldPointByClient` 逆映射随 fit/平移/缩放同步；点击聚焦右侧输入框，无弹窗。
-- **数据：** `src/mock-data.ts` 本地模拟，无真实 Bot/聊天 API。
+## 当前状态
 
-## 对齐改稿 07
+- **分支：** `cursor/phase1-prototype-90f3` → `main`（[PR #1](https://github.com/huangxiaohei87-lang/bot-office-dashboard/pull/1)，未合并）
+- **head SHA：** 见本文件文末 `git rev-parse HEAD` 输出（推送到 GitHub 后以此为准）
+- **GitHub Pages：** 未启用
 
-| 项 | 做法 |
-| --- | --- |
-| 纸白外壳与字体 | Noto Serif SC 标题 + Noto Sans SC 正文（OFL，打包入 dist） |
-| 近黑圆角视口 | `#101010` + 16px 圆角 + 内缩边距 |
-| 环境光 / 名牌 | 使用改稿 07 预渲场景图，不在代码中加灯牌发光 |
-| 默认状态 | 四间开灯 + 两块「未创建」空地；视觉与动效在茶水间休息，其 APP 工位桌北空椅「离开」；工程在 APP制作台在岗 |
-| 点击助理 | 热区 scene-local `298,432` 188×172（老大办公室助理），DOM 按钮随画布同步 |
+## 相机 / 平移 / 缩放（回归修复）
 
-## 已知设计缺口（本轮不修）
+### 根因
 
-- APP 西门侧招与「构思家」姓名牌较近
-- 静帧中工程「离开」标记偏紧
-- 部分场景静帧仍带旧灯牌处理，界面层以改稿 07 为准
+1. `zoom('fit'|'in'|…)` 依赖 **`@leafer-in/view`** 插件；未安装时控制台报错且镜头几乎不动。
+2. 视口平移依赖 **`@leafer-in/viewport`** + `tree: { type: 'viewport' }`。
+3. DOM 叠框须用 **`app.tree` 的 `x` / `y` / `scaleX`** 与场景 Rect 的 scene-local `x,y,width,height` 同步，不能用固定 `fitScale` 的逆映射。
 
-## 预览与 CI
+### 热区同步
 
-见根目录 `README.md`。`npm run test:e2e` 覆盖：外壳/视口可见、平移缩放、旋转为 0、模拟状态文案、点击助理聚焦。
+- `ASSISTANT_HOTSPOT` 与 `ROOM_HIT_REGIONS` 未改常量裁图。
+- `syncAllHits` 在 `RenderEvent.END`、缩放、fit、resize 后执行。
+- 透明 DOM 按钮仅作叠框与点击；房间叠框 `pointer-events: auto`，助理叠框可点击回家/聚焦。
+
+### 验证（Playwright，不先点「适应」）
+
+- `npm run build && CI=1 npm run test:e2e`（16/16）
+- 断言含：平移后 `__getTreeState` 位移、按钮缩放热区变大、滚轮 `scaleX` 增大、各房间交互与错题本、artifact 截图哈希差异。
+- **预览端口：** Playwright `webServer` 固定 `http://127.0.0.1:4173`；本地手测请 `npm run preview -- --host 127.0.0.1 --port 4173`。
+
+## 字阶 / 次要色 / 右栏
+
+- 窗口标题 22/32 Serif **700** `#171414`；栏标题 18/28；正文 14/22；次要 `#6E6C65`。
+- 右栏模式：`chat` | `app-projects` | `hr-projects` | `mistakes`（茶水间错题本，本地示例文案，均标「示例」）。
+
+## 叠框 Artifacts（1920×1080）
+
+路径：`/opt/cursor/artifacts/hotspot-overlay-*.png`
+
+- `fit-default`、`after-pan`、`after-zoom-in`、`after-wheel-zoom`
+- `click-app-projects`、`click-hr-projects`、`click-pantry-mistakes`、`click-boss-home-chat`
+
+## 第三方
+
+- LeaferJS / leafer-ui / `@leafer-in/view` / `@leafer-in/viewport` — MIT
+- Noto Serif SC / Noto Sans SC（Fontsource）— SIL OFL
+- 见仓库根 `THIRD_PARTY_NOTICES`
+
+## 未做
+
+- 真实 API、错题采集、走位汇报、Motion 库（动效以 CSS + `prefers-reduced-motion` 为主）

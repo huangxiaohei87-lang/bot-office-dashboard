@@ -1,10 +1,11 @@
 import './styles.css'
 import '@fontsource/noto-sans-sc/chinese-simplified-400.css'
-import '@fontsource/noto-serif-sc/chinese-simplified-600.css'
-import { chatMessages } from './mock-data'
-import { createSceneCanvas } from './scene-canvas'
+import '@fontsource/noto-serif-sc/chinese-simplified-700.css'
+import { createSceneCanvas, type SceneCanvas } from './scene-canvas'
+import { createSidePanel, type SidePanelMode } from './side-panel'
+import type { ClickableRoomId } from './scene-constants'
 
-function renderShell(): HTMLElement {
+function renderShell(sidePanelRoot: HTMLElement): HTMLElement {
   const root = document.createElement('div')
   root.className = 'dashboard-shell'
   root.innerHTML = `
@@ -26,104 +27,56 @@ function renderShell(): HTMLElement {
           </div>
         </div>
       </section>
-      <aside class="chat-column">
-        <div class="chat-card" id="chat-card" data-testid="chat-card">
-          <div class="chat-card__head">
-            <div class="chat-card__head-row">
-              <span class="avatar-block" aria-hidden="true">助</span>
-              <div>
-                <h2 class="chat-card__title">与助理的对话</h2>
-                <p class="chat-card__sub">常驻 · 点击场景中的助理会回到这里</p>
-              </div>
-            </div>
-          </div>
-          <div class="chat-messages" id="chat-messages" data-testid="chat-messages"></div>
-          <div class="chat-input-wrap">
-            <label class="visually-hidden" for="chat-input">给助理发消息</label>
-            <input
-              class="chat-input"
-              id="chat-input"
-              data-testid="chat-input"
-              type="text"
-              placeholder="给助理发消息…"
-              autocomplete="off"
-            />
-          </div>
-        </div>
-      </aside>
+      <aside class="side-column" data-testid="side-column"></aside>
     </div>
   `
+  root.querySelector('.side-column')!.appendChild(sidePanelRoot)
   return root
 }
 
-function renderMessages(container: HTMLElement) {
-  container.replaceChildren()
-  for (const msg of chatMessages) {
-    const row = document.createElement('div')
-    row.className = `msg-row${msg.from === 'user' ? ' msg-row--user' : ''}`
-
-    const avatar = document.createElement('span')
-    avatar.className = 'avatar-block'
-    avatar.textContent = msg.from === 'user' ? '我' : '助'
-
-    const bubble = document.createElement('div')
-    bubble.className = `msg-bubble msg-bubble--${msg.from === 'user' ? 'user' : 'assistant'}`
-
-    if (Array.isArray(msg.text)) {
-      for (const line of msg.text) {
-        const p = document.createElement('p')
-        if (line.includes('审查闸门')) {
-          p.innerHTML = line.replaceAll('审查闸门', '<span class="phrase-nowrap">审查闸门</span>')
-        } else {
-          p.textContent = line
-        }
-        bubble.appendChild(p)
-      }
-    } else {
-      bubble.textContent = msg.text
-    }
-
-    row.append(avatar, bubble)
-    container.appendChild(row)
-  }
-}
-
-function focusChat(chatCard: HTMLElement, chatInput: HTMLInputElement) {
-  chatCard.classList.add('chat-card--focused')
-  chatInput.focus({ preventScroll: true })
-  chatCard.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-}
-
+const sidePanel = createSidePanel()
 const appEl = document.querySelector<HTMLDivElement>('#app')!
-const shell = renderShell()
+const shell = renderShell(sidePanel.root)
 appEl.appendChild(shell)
 
-const messagesEl = shell.querySelector<HTMLDivElement>('#chat-messages')!
-renderMessages(messagesEl)
-
-const chatCard = shell.querySelector<HTMLDivElement>('#chat-card')!
-const chatInput = shell.querySelector<HTMLInputElement>('#chat-input')!
 const viewport = shell.querySelector<HTMLDivElement>('#scene-viewport')!
 
-const scene = createSceneCanvas(viewport, () => focusChat(chatCard, chatInput))
+const panelForRoom = (room: ClickableRoomId): SidePanelMode => {
+  if (room === 'app') return 'app-projects'
+  if (room === 'hr') return 'hr-projects'
+  if (room === 'pantry') return 'mistakes'
+  return 'chat'
+}
+
+const scene: SceneCanvas = createSceneCanvas(viewport, {
+  onAssistantFocus: () => sidePanel.focusChatInput(),
+  onBossHome: () => sidePanel.setMode('chat'),
+  onRoomFocus: (room) => sidePanel.setMode(panelForRoom(room)),
+})
 
 shell.querySelector('#btn-zoom-in')?.addEventListener('click', () => scene.zoomBy(0.12))
 shell.querySelector('#btn-zoom-out')?.addEventListener('click', () => scene.zoomBy(-0.12))
 shell.querySelector('#btn-zoom-reset')?.addEventListener('click', () => scene.resetView())
 
-;(window as unknown as {
+type SceneWindow = {
   __sceneRotation?: () => number
   __getAssistantScreenCenter?: () => { x: number; y: number } | null
-  __getAssistantHotspotScreenRect?: () => {
-    left: number
-    top: number
-    width: number
-    height: number
-    centerX: number
-    centerY: number
-  } | null
-}).__sceneRotation = () => scene.getSceneRotation()
-;(window as unknown as { __getAssistantScreenCenter?: () => { x: number; y: number } | null }).__getAssistantScreenCenter =
-  () => scene.getAssistantScreenCenter()
-;(window as unknown as { __getAssistantHotspotScreenRect?: () => ReturnType<typeof scene.getHotspotScreenRect> })
-  .__getAssistantHotspotScreenRect = () => scene.getHotspotScreenRect()
+  __getAssistantHotspotScreenRect?: () => ReturnType<SceneCanvas['getHotspotScreenRect']>
+  __getCameraScale?: () => number
+  __sampleWorldAtClient?: (x: number, y: number) => { x: number; y: number }
+  __getSidePanelMode?: () => SidePanelMode
+  __getSceneViewState?: () => string
+  __getRoomScreenCenter?: (room: ClickableRoomId) => { x: number; y: number } | null
+  __getTreeState?: () => { x: number; y: number; scale: number }
+}
+
+const w = window as unknown as SceneWindow
+w.__sceneRotation = () => scene.getSceneRotation()
+w.__getAssistantScreenCenter = () => scene.getAssistantScreenCenter()
+w.__getAssistantHotspotScreenRect = () => scene.getHotspotScreenRect()
+w.__getCameraScale = () => scene.getCameraScale()
+w.__sampleWorldAtClient = (x, y) => scene.sampleWorldAtClient(x, y)
+w.__getSidePanelMode = () => sidePanel.getMode()
+w.__getSceneViewState = () => scene.getViewState()
+w.__getRoomScreenCenter = (room) => scene.getRoomScreenCenter(room)
+w.__getTreeState = () => scene.getTreeState()

@@ -1,8 +1,19 @@
+import '@leafer-in/view'
+import '@leafer-in/viewport'
 import { App, Group, Image, Rect } from 'leafer-ui'
-import { LayoutEvent, RenderEvent } from '@leafer/core'
-import { ASSISTANT_HOTSPOT, SCENE_H, SCENE_W } from './scene-constants'
+import { RenderEvent } from '@leafer/core'
+import {
+  ASSISTANT_HOTSPOT,
+  type ClickableRoomId,
+  ROOM_HIT_REGIONS,
+  regionById,
+  SCENE_H,
+  SCENE_W,
+} from './scene-constants'
 
 const SCENE_URL = `${import.meta.env.BASE_URL}assets/scene/ambient-07.png`
+
+export type ViewState = 'overview' | ClickableRoomId
 
 export interface HotspotScreenRect {
   left: number
@@ -13,23 +24,37 @@ export interface HotspotScreenRect {
   centerY: number
 }
 
+export interface SceneCanvasCallbacks {
+  onAssistantFocus: () => void
+  onBossHome: () => void
+  onRoomFocus: (room: ClickableRoomId) => void
+}
+
 export interface SceneCanvas {
   app: App
   zoomBy: (delta: number) => void
   resetView: () => void
+  goHome: () => void
+  focusRoom: (room: ClickableRoomId) => void
+  getViewState: () => ViewState
   getSceneRotation: () => number
   getHotspotScreenRect: () => HotspotScreenRect | null
   getAssistantScreenCenter: () => { x: number; y: number } | null
+  getRoomScreenCenter: (room: ClickableRoomId) => { x: number; y: number } | null
+  sampleWorldAtClient: (clientX: number, clientY: number) => { x: number; y: number }
+  getCameraScale: () => number
+  getTreeState: () => { x: number; y: number; scale: number }
 }
 
-export function createSceneCanvas(
-  mount: HTMLElement,
-  onAssistantClick: () => void,
-): SceneCanvas {
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCallbacks): SceneCanvas {
   const app = new App({
     view: mount,
     fill: '#101010',
-    tree: { type: 'design' },
+    tree: { type: 'viewport' },
     wheel: {
       zoomMode: true,
       rotateSpeed: 0,
@@ -55,6 +80,8 @@ export function createSceneCanvas(
     hittable: false,
   })
 
+  let viewState: ViewState = 'overview'
+
   const assistantHit = new Rect({
     x: ASSISTANT_HOTSPOT.x,
     y: ASSISTANT_HOTSPOT.y,
@@ -66,11 +93,80 @@ export function createSceneCanvas(
     data: { testid: 'assistant-hotspot' },
   })
 
-  const focusAssistant = () => onAssistantClick()
+  const roomHits: { id: ClickableRoomId; rect: Rect; button: HTMLButtonElement }[] = []
+
+  const goHome = () => {
+    viewState = 'overview'
+    if (prefersReducedMotion()) app.tree.zoom('fit', 24)
+    else app.tree.zoom('fit', 24, undefined, { duration: 0.32, easing: 'ease-out' })
+    requestAnimationFrame(syncAllHits)
+  }
+
+  const focusRoom = (room: ClickableRoomId) => {
+    if (room === 'boss') {
+      goHome()
+      return
+    }
+    const region = regionById(room)
+    viewState = room
+    const bounds = { x: region.x, y: region.y, width: region.width, height: region.height }
+    if (prefersReducedMotion()) app.tree.zoom(bounds, 36)
+    else app.tree.zoom(bounds, 36, undefined, { duration: 0.32, easing: 'ease-out' })
+    requestAnimationFrame(syncAllHits)
+  }
+
+  const focusAssistant = () => {
+    if (viewState === 'overview') {
+      callbacks.onAssistantFocus()
+      return
+    }
+    goHome()
+    callbacks.onBossHome()
+    callbacks.onAssistantFocus()
+  }
+
   assistantHit.on('click', focusAssistant)
   assistantHit.on('tap', focusAssistant)
 
+  for (const region of ROOM_HIT_REGIONS) {
+    const rect = new Rect({
+      x: region.x,
+      y: region.y,
+      width: region.width,
+      height: region.height,
+      fill: 'rgba(0,0,0,0.01)',
+      cursor: 'pointer',
+      hittable: true,
+    })
+    const onRoom = () => {
+      if (region.id === 'boss') {
+        goHome()
+        callbacks.onBossHome()
+        return
+      }
+      focusRoom(region.id)
+      callbacks.onRoomFocus(region.id)
+    }
+    rect.on('click', onRoom)
+    rect.on('tap', onRoom)
+
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'scene-room-hit'
+    btn.dataset.testid = `room-hit-${region.id}`
+    btn.dataset.room = region.id
+    btn.title = region.label
+    btn.setAttribute('aria-label', `点击${region.label}`)
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation()
+      onRoom()
+    })
+    mount.appendChild(btn)
+    roomHits.push({ id: region.id, rect, button: btn })
+  }
+
   content.add(sceneImage)
+  for (const { rect } of roomHits) content.add(rect)
   content.add(assistantHit)
   app.tree.add(content)
 
@@ -86,100 +182,114 @@ export function createSceneCanvas(
   })
   mount.appendChild(hitButton)
 
-  const mapWorldPointToView = (worldX: number, worldY: number) => {
-    const mountBox = mount.getBoundingClientRect()
-    const fitScale = Math.min(
-      (mount.clientWidth - 48) / SCENE_W,
-      (mount.clientHeight - 48) / SCENE_H,
-    )
-    const ox = (mount.clientWidth - SCENE_W * fitScale) / 2
-    const oy = (mount.clientHeight - SCENE_H * fitScale) / 2
-    let px = mountBox.left + ox + worldX * fitScale
-    let py = mountBox.top + oy + worldY * fitScale
-    for (let i = 0; i < 16; i++) {
-      const mapped = app.tree.getWorldPointByClient({ clientX: px, clientY: py })
-      const errX = worldX - mapped.x
-      const errY = worldY - mapped.y
-      if (Math.abs(errX) < 0.35 && Math.abs(errY) < 0.35) break
-      px += errX * fitScale
-      py += errY * fitScale
-    }
-    return { x: px - mountBox.left, y: py - mountBox.top }
+  const syncRectButton = (rect: Rect, button: HTMLElement) => {
+    const w = rect.width ?? 0
+    const h = rect.height ?? 0
+    const sx = app.tree.scaleX ?? 1
+    const sy = app.tree.scaleY ?? sx
+    const ox = app.tree.x ?? 0
+    const oy = app.tree.y ?? 0
+    const lx = rect.x ?? 0
+    const ly = rect.y ?? 0
+    button.style.left = `${ox + lx * sx}px`
+    button.style.top = `${oy + ly * sy}px`
+    button.style.width = `${Math.max(24, w * sx)}px`
+    button.style.height = `${Math.max(24, h * sy)}px`
   }
 
-  const readHotspotViewBox = () => {
-    assistantHit.updateLayout()
-    const world = assistantHit.getLayoutBounds('box', 'world')
-    const corners = [
-      mapWorldPointToView(world.x, world.y),
-      mapWorldPointToView(world.x + world.width, world.y),
-      mapWorldPointToView(world.x + world.width, world.y + world.height),
-      mapWorldPointToView(world.x, world.y + world.height),
-    ]
-    if (corners.length < 4) return null
-    const xs = corners.map((c) => c.x!)
-    const ys = corners.map((c) => c.y!)
-    const left = Math.min(...xs)
-    const top = Math.min(...ys)
-    const right = Math.max(...xs)
-    const bottom = Math.max(...ys)
-    return { x: left, y: top, width: right - left, height: bottom - top }
+  const syncAllHits = () => {
+    syncRectButton(assistantHit, hitButton)
+    for (const { rect, button } of roomHits) syncRectButton(rect, button)
   }
 
-  const syncHitButton = () => {
-    const view = readHotspotViewBox()
-    if (!view || !view.width || !view.height) return
-    hitButton.style.left = `${view.x}px`
-    hitButton.style.top = `${view.y}px`
-    hitButton.style.width = `${Math.max(24, view.width)}px`
-    hitButton.style.height = `${Math.max(24, view.height)}px`
-  }
+  const getCameraScale = () => app.tree.scaleX ?? 1
 
   const fit = () => {
+    viewState = 'overview'
     app.tree.zoom('fit', 24)
     requestAnimationFrame(() => {
-      syncHitButton()
-      requestAnimationFrame(syncHitButton)
+      syncAllHits()
+      requestAnimationFrame(syncAllHits)
     })
   }
 
-  app.on(RenderEvent.END, syncHitButton)
-  app.tree.on(LayoutEvent.END, syncHitButton)
+  app.on(RenderEvent.END, syncAllHits)
   requestAnimationFrame(() => fit())
   window.addEventListener('resize', () => fit())
 
   const zoomBy = (delta: number) => {
     if (delta > 0) app.tree.zoom('in')
     else app.tree.zoom('out')
-    requestAnimationFrame(syncHitButton)
+    requestAnimationFrame(syncAllHits)
   }
 
-  const getHotspotScreenRect = (): HotspotScreenRect | null => {
-    const view = readHotspotViewBox()
-    if (!view || !view.width || !view.height) return null
+  const rectToScreen = (rect: Rect): HotspotScreenRect | null => {
+    const w = rect.width ?? 0
+    const h = rect.height ?? 0
+    if (!w || !h) return null
+    const sx = app.tree.scaleX ?? 1
+    const sy = app.tree.scaleY ?? sx
+    const ox = app.tree.x ?? 0
+    const oy = app.tree.y ?? 0
+    const lx = rect.x ?? 0
+    const ly = rect.y ?? 0
     const mountBox = mount.getBoundingClientRect()
+    const width = w * sx
+    const height = h * sy
+    const left = mountBox.left + ox + lx * sx
+    const top = mountBox.top + oy + ly * sy
     return {
-      left: mountBox.left + view.x,
-      top: mountBox.top + view.y,
-      width: view.width,
-      height: view.height,
-      centerX: mountBox.left + view.x + view.width / 2,
-      centerY: mountBox.top + view.y + view.height / 2,
+      left,
+      top,
+      width,
+      height,
+      centerX: left + width / 2,
+      centerY: top + height / 2,
     }
   }
 
+  const getHotspotScreenRect = () => rectToScreen(assistantHit)
+
   const getAssistantScreenCenter = () => {
     const r = getHotspotScreenRect()
-    if (!r) return null
-    return { x: r.centerX, y: r.centerY }
+    return r ? { x: r.centerX, y: r.centerY } : null
   }
+
+  const getRoomScreenCenter = (room: ClickableRoomId) => {
+    const entry = roomHits.find((r) => r.id === room)
+    if (!entry) return null
+    const w = entry.rect.width ?? 0
+    const h = entry.rect.height ?? 0
+    const sx = app.tree.scaleX ?? 1
+    const sy = app.tree.scaleY ?? sx
+    const ox = app.tree.x ?? 0
+    const oy = app.tree.y ?? 0
+    const lx = (entry.rect.x ?? 0) + w / 2
+    const ly = (entry.rect.y ?? 0) + h / 2
+    const viewRect = mount.getBoundingClientRect()
+    return { x: viewRect.left + ox + lx * sx, y: viewRect.top + oy + ly * sy }
+  }
+
+  const sampleWorldAtClient = (clientX: number, clientY: number) =>
+    app.tree.getWorldPointByClient({ clientX, clientY })
 
   return {
     app,
     zoomBy,
     resetView: fit,
+    goHome,
+    focusRoom,
+    getViewState: () => viewState,
     getSceneRotation: () => content.rotation ?? 0,
     getHotspotScreenRect,
     getAssistantScreenCenter,
+    getRoomScreenCenter,
+    sampleWorldAtClient,
+    getCameraScale,
+    getTreeState: () => ({
+      x: app.tree.x ?? 0,
+      y: app.tree.y ?? 0,
+      scale: app.tree.scaleX ?? 1,
+    }),
   }
 }
