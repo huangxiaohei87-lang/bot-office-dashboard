@@ -37,3 +37,25 @@ export function regionById(id: ClickableRoomId): SceneRegion {
   if (!r) throw new Error(`unknown room ${id}`)
   return r
 }
+
+export interface BoundsRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export function unionBounds(...rects: BoundsRect[]): BoundsRect {
+  const x1 = Math.min(...rects.map((r) => r.x))
+  const y1 = Math.min(...rects.map((r) => r.y))
+  const x2 = Math.max(...rects.map((r) => r.x + r.width))
+  const y2 = Math.max(...rects.map((r) => r.y + r.height))
+  return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 }
+}
+
+/** Focus zoom must keep boss office + assistant visible when drilling into app/hr/pantry. */
+export function focusUnionBounds(room: Exclude<ClickableRoomId, 'boss'>): BoundsRect {
+  const region = regionById(room)
+  const boss = regionById('boss')
+  return unionBounds(region, boss, ASSISTANT_HOTSPOT)
+}

@@ -6,7 +6,7 @@ import {
   ASSISTANT_HOTSPOT,
   type ClickableRoomId,
   ROOM_HIT_REGIONS,
-  regionById,
+  focusUnionBounds,
   SCENE_H,
   SCENE_W,
 } from './scene-constants'
@@ -107,9 +107,8 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
       goHome()
       return
     }
-    const region = regionById(room)
     viewState = room
-    const bounds = { x: region.x, y: region.y, width: region.width, height: region.height }
+    const bounds = focusUnionBounds(room)
     if (prefersReducedMotion()) app.tree.zoom(bounds, 36)
     else app.tree.zoom(bounds, 36, undefined, { duration: 0.32, easing: 'ease-out' })
     requestAnimationFrame(syncAllHits)

@@ -25,6 +25,14 @@ test.describe('热区叠框截图（1920×1080）', () => {
       return createHash('sha256').update(fs.readFileSync(file)).digest('hex')
     }
 
+    const clickHomeInViewport = async () => {
+      const assistant = await page.getByTestId('assistant-scene-hit').boundingBox()
+      expect(assistant).not.toBeNull()
+      await page.mouse.click(assistant!.x + assistant!.width / 2, assistant!.y + assistant!.height / 2)
+      await page.waitForTimeout(450)
+      await expect(page.getByRole('heading', { name: '与助理的对话' })).toBeVisible()
+    }
+
     await page.goto('/')
     await page.getByTestId('scene-viewport').locator('canvas').first().waitFor({ timeout: 15_000 })
     await page.waitForFunction(() => {
@@ -64,7 +72,7 @@ test.describe('热区叠框截图（1920×1080）', () => {
     const hashWheel = await capture('after-wheel-zoom')
     expect(hashWheel).not.toBe(hashFit)
 
-    const clickRoom = async (room: 'app' | 'hr' | 'pantry' | 'boss') => {
+    const clickRoom = async (room: 'app' | 'hr' | 'pantry') => {
       const c = await page.evaluate(
         (r) =>
           (window as unknown as { __getRoomScreenCenter?: (id: string) => { x: number; y: number } | null }).__getRoomScreenCenter?.(r),
@@ -83,14 +91,20 @@ test.describe('热区叠框截图（1920×1080）', () => {
     await page.reload()
     await page.waitForTimeout(800)
     await clickRoom('hr')
-    await capture('click-hr-projects')
+    const hashHrZoom = await capture('click-hr-projects')
+    await clickHomeInViewport()
+    const hashHomeFromHr = await capture('click-home-from-hr')
+    expect(hashHomeFromHr).not.toBe(hashHrZoom)
 
     await page.reload()
     await page.waitForTimeout(800)
     await clickRoom('pantry')
-    await capture('click-pantry-mistakes')
+    const hashPantryZoom = await capture('click-pantry-mistakes')
+    await clickHomeInViewport()
+    const hashHomeFromPantry = await capture('click-home-from-pantry')
+    expect(hashHomeFromPantry).not.toBe(hashPantryZoom)
 
-    await clickRoom('boss')
-    await capture('click-boss-home-chat')
+    const legacy = path.join(ARTIFACT_DIR, 'hotspot-overlay-click-boss-home-chat.png')
+    if (fs.existsSync(legacy)) fs.unlinkSync(legacy)
   })
 })
