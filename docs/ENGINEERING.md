@@ -5,7 +5,7 @@
 ## 当前状态
 
 - **分支：** `cursor/phase1-prototype-90f3` → `main`（[PR #1](https://github.com/huangxiaohei87-lang/bot-office-dashboard/pull/1)，未合并）
-- **head SHA：** `eb6c2888bb3b633f0424c4a0111516a8c06da24e`（返工基准曾校验 `43f6fc46cd9080ca212f7cb6d62c291a83eae489`）
+- **head SHA：** `979f9ce7dd457b55c0d03d26848c20326a498400`（返工基准曾校验 `43f6fc46cd9080ca212f7cb6d62c291a83eae489`）
 - **GitHub Pages：** 未启用（`has_pages: false`）
 
 ## 取景（focusRoom 并集）

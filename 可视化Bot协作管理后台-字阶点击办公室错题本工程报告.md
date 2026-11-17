@@ -5,7 +5,7 @@
 - **返工任务单基准 SHA：** `43f6fc46cd9080ca212f7cb6d62c291a83eae489`（开工前已核对）
 - **GitHub Pages：** `has_pages=false`（未启用）
 
-> **head SHA：** `eb6c2888bb3b633f0424c4a0111516a8c06da24e`
+> **head SHA：** `979f9ce7dd457b55c0d03d26848c20326a498400`
 
 ## 1. 取景（并集 bounds）
 
@@ -64,4 +64,4 @@ app.tree.zoom(bounds, 36, …, { duration: 0.32, easing: 'ease-out' })
 
 ## 交付 head SHA
 
-`eb6c2888bb3b633f0424c4a0111516a8c06da24e`
+`979f9ce7dd457b55c0d03d26848c20326a498400`
