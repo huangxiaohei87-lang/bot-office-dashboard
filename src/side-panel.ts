@@ -1,10 +1,14 @@
 import {
   appProjects,
-  chatMessages,
+  chatMessages as seedChatMessages,
   hrProjects,
   pantryMistakeSummaries,
   pantryMistakes,
 } from './mock-data'
+
+type ChatMessage = { from: 'user' | 'assistant'; text: string | string[] }
+
+const LOCAL_PREVIEW_REPLY = '这是页面内预览，不会转到真实助理对话。'
 
 export type SidePanelMode = 'chat' | 'app-projects' | 'hr-projects' | 'mistakes'
 
@@ -15,9 +19,9 @@ export interface SidePanelHandles {
   getMode: () => SidePanelMode
 }
 
-function renderMessages(container: HTMLElement) {
+function renderMessages(container: HTMLElement, messages: ChatMessage[]) {
   container.replaceChildren()
-  for (const msg of chatMessages) {
+  for (const msg of messages) {
     const row = document.createElement('div')
     row.className = `msg-row${msg.from === 'user' ? ' msg-row--user' : ''}`
     const avatar = document.createElement('span')
@@ -54,6 +58,7 @@ function projectRows(items: { title: string; meta: string }[]) {
 export function createSidePanel(): SidePanelHandles {
   let mode: SidePanelMode = 'chat'
   let assistantFocused = false
+  const messages: ChatMessage[] = seedChatMessages.map((m) => ({ ...m, text: m.text }))
   const root = document.createElement('div')
   root.className = 'side-panel'
   root.dataset.testid = 'side-panel'
@@ -74,7 +79,25 @@ export function createSidePanel(): SidePanelHandles {
       <div class="chat-input-wrap">
         <input class="chat-input" id="chat-input" data-testid="chat-input" type="text" placeholder="给助理发消息…" autocomplete="off" />
       </div>`
-    renderMessages(inner.querySelector('#chat-messages') as HTMLElement)
+    const messagesEl = inner.querySelector('#chat-messages') as HTMLElement
+    renderMessages(messagesEl, messages)
+    const input = inner.querySelector('#chat-input') as HTMLInputElement
+    const sendFromInput = () => {
+      const text = input.value.trim()
+      if (!text) return
+      messages.push({ from: 'user', text })
+      input.value = ''
+      renderMessages(messagesEl, messages)
+      messages.push({ from: 'assistant', text: LOCAL_PREVIEW_REPLY })
+      renderMessages(messagesEl, messages)
+      input.focus({ preventScroll: true })
+    }
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault()
+        sendFromInput()
+      }
+    })
   }
 
   const renderProjects = (which: 'app' | 'hr') => {

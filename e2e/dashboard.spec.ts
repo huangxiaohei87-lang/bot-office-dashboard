@@ -30,11 +30,6 @@ async function viewportCenter(page: import('@playwright/test').Page) {
 }
 
 async function panOnDarkMargin(page: import('@playwright/test').Page) {
-  await page.evaluate(() => {
-    document.querySelectorAll('.scene-room-hit').forEach((el) => {
-      ;(el as HTMLElement).style.pointerEvents = 'none'
-    })
-  })
   const box = await page.getByTestId('scene-viewport').boundingBox()
   expect(box).not.toBeNull()
   const sx = box!.x + box!.width * 0.52
@@ -43,6 +38,37 @@ async function panOnDarkMargin(page: import('@playwright/test').Page) {
   await page.mouse.down()
   await page.mouse.move(sx - 150, sy + 70, { steps: 12 })
   await page.mouse.up()
+  await page.waitForTimeout(400)
+}
+
+async function panFromRoom(
+  page: import('@playwright/test').Page,
+  room: 'app' | 'hr' | 'boss',
+  dx: number,
+  dy: number,
+) {
+  const center = await page.evaluate(
+    (r) =>
+      (window as unknown as { __getRoomScreenCenter?: (id: string) => { x: number; y: number } | null }).__getRoomScreenCenter?.(r),
+    room,
+  )
+  expect(center).not.toBeNull()
+  await page.mouse.move(center!.x, center!.y)
+  await page.mouse.down()
+  await page.mouse.move(center!.x + dx, center!.y + dy, { steps: 14 })
+  await page.mouse.up()
+  await page.waitForTimeout(500)
+}
+
+async function wheelOnRoom(page: import('@playwright/test').Page, room: 'app' | 'hr' | 'pantry') {
+  const center = await page.evaluate(
+    (r) =>
+      (window as unknown as { __getRoomScreenCenter?: (id: string) => { x: number; y: number } | null }).__getRoomScreenCenter?.(r),
+    room,
+  )
+  expect(center).not.toBeNull()
+  await page.mouse.move(center!.x, center!.y)
+  await page.mouse.wheel(0, -500)
   await page.waitForTimeout(400)
 }
 
@@ -73,11 +99,21 @@ async function assertHomeHitsClickable(page: import('@playwright/test').Page) {
   }
 }
 
+async function sceneTapAtClient(page: import('@playwright/test').Page, clientX: number, clientY: number) {
+  await page.evaluate(
+    ({ x, y }) =>
+      (window as unknown as { __sceneTapAtClient?: (a: number, b: number) => void }).__sceneTapAtClient?.(x, y),
+    { x: clientX, y: clientY },
+  )
+  await page.waitForTimeout(450)
+}
+
 async function clickHomeHitInViewport(page: import('@playwright/test').Page) {
-  const box = await page.getByTestId('assistant-scene-hit').boundingBox()
-  expect(box).not.toBeNull()
-  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2)
-  await page.waitForTimeout(400)
+  const c = await page.evaluate(() =>
+    (window as unknown as { __getAssistantScreenCenter?: () => { x: number; y: number } | null }).__getAssistantScreenCenter?.(),
+  )
+  expect(c).not.toBeNull()
+  await sceneTapAtClient(page, c!.x, c!.y)
 }
 
 async function clickLookHomeCapsule(page: import('@playwright/test').Page) {
@@ -103,8 +139,7 @@ async function clickRoomCenter(page: import('@playwright/test').Page, room: 'app
     room,
   )
   expect(center).not.toBeNull()
-  await page.mouse.click(center!.x, center!.y)
-  await page.waitForTimeout(500)
+  await sceneTapAtClient(page, center!.x, center!.y)
 }
 
 async function wheelOnDarkMargin(page: import('@playwright/test').Page) {
@@ -173,6 +208,47 @@ test.describe('可视化 Bot 协作管理后台 — 第一期', () => {
     const vp = await page.getByTestId('scene-viewport').boundingBox()
     await page.mouse.click(vp!.x + 48, vp!.y + 36)
     await expect(page.getByTestId('chat-input')).not.toBeFocused()
+  })
+
+  test('在办公室热区上拖拽平移且不误进房（不点适应）', async ({ page }) => {
+    await waitHotspotReady(page)
+    const viewBefore = await page.evaluate(() =>
+      (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.(),
+    )
+    const treeBefore = await page.evaluate(() =>
+      (window as unknown as { __getTreeState?: () => { x: number; y: number } }).__getTreeState?.(),
+    )
+    await panFromRoom(page, 'app', -140, 85)
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe(
+      viewBefore,
+    )
+    const treeAfter = await page.evaluate(() =>
+      (window as unknown as { __getTreeState?: () => { x: number; y: number } }).__getTreeState?.(),
+    )
+    const moved =
+      Math.abs((treeAfter?.x ?? 0) - (treeBefore?.x ?? 0)) + Math.abs((treeAfter?.y ?? 0) - (treeBefore?.y ?? 0))
+    expect(moved).toBeGreaterThan(25)
+  })
+
+  test('指针在房间热区上滚轮缩放（不点适应）', async ({ page }) => {
+    await waitHotspotReady(page)
+    const scaleBefore = await page.evaluate(() => (window as unknown as { __getCameraScale?: () => number }).__getCameraScale?.())
+    await wheelOnRoom(page, 'hr')
+    const scaleAfter = await page.evaluate(() => (window as unknown as { __getCameraScale?: () => number }).__getCameraScale?.())
+    expect(scaleAfter).toBeGreaterThan((scaleBefore ?? 0) * 1.08)
+  })
+
+  test('回车发送用户消息并显示预览说明', async ({ page }) => {
+    await waitHotspotReady(page)
+    const input = page.getByTestId('chat-input')
+    await input.fill('本机测试：交互流畅度')
+    await input.press('Enter')
+    const box = await page.getByTestId('chat-messages').locator('.msg-bubble--user').last()
+    await expect(box).toContainText('本机测试：交互流畅度')
+    await expect(page.getByTestId('chat-messages')).toContainText('页面内预览')
+    await input.fill('第二条')
+    await input.press('Enter')
+    await expect(page.getByTestId('chat-messages').locator('.msg-bubble--user')).toHaveCount(3)
   })
 
   test('平移后热区中心明显偏移（不点适应）', async ({ page }) => {
@@ -271,10 +347,11 @@ test.describe('可视化 Bot 协作管理后台 — 第一期', () => {
     expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe(
       'mistakes',
     )
-    const boss = await page.getByTestId('room-hit-boss').boundingBox()
-    expect(boss).not.toBeNull()
-    await page.mouse.click(boss!.x + boss!.width / 2, boss!.y + boss!.height / 2)
-    await page.waitForTimeout(400)
+    const bossC = await page.evaluate(() =>
+      (window as unknown as { __getRoomScreenCenter?: (id: string) => { x: number; y: number } | null }).__getRoomScreenCenter?.('boss'),
+    )
+    expect(bossC).not.toBeNull()
+    await sceneTapAtClient(page, bossC!.x, bossC!.y)
     await expect(page.getByTestId('chat-messages')).toBeVisible({ timeout: 10_000 })
     expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe('chat')
     expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe(
@@ -314,9 +391,12 @@ test.describe('可视化 Bot 协作管理后台 — 第一期', () => {
     await expect(page.getByTestId('panel-mistakes')).toHaveCount(0)
   })
 
-  test('prefers-reduced-motion 下胶囊无跳动且看向回家点仍正确', async ({ page }) => {
+  test('prefers-reduced-motion 下无拖拽惯性、胶囊无跳动', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await waitHotspotReady(page)
+    expect(await page.evaluate(() => (window as unknown as { __getMoveDragAnimate?: () => boolean }).__getMoveDragAnimate?.())).toBe(
+      false,
+    )
     await clickRoomCenter(page, 'hr')
     const capsule = page.getByTestId('look-home-capsule')
     await expect(capsule).toBeVisible()

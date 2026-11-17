@@ -54,16 +54,36 @@ export interface SceneCanvas {
   sampleWorldAtClient: (clientX: number, clientY: number) => { x: number; y: number }
   getCameraScale: () => number
   getTreeState: () => { x: number; y: number; scale: number }
+  getMoveDragAnimate: () => boolean | number | undefined
+  tapAtClient: (clientX: number, clientY: number) => void
 }
+
+const TAP_DRAG_THRESHOLD_PX = 6
 
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
+function pickTargetAtScenePoint(x: number, y: number): ClickableRoomId | 'assistant' | null {
+  const inRect = (rx: number, ry: number, w: number, h: number) =>
+    x >= rx && x <= rx + w && y >= ry && y <= ry + h
+  if (inRect(ASSISTANT_HOTSPOT.x, ASSISTANT_HOTSPOT.y, ASSISTANT_HOTSPOT.width, ASSISTANT_HOTSPOT.height)) {
+    return 'assistant'
+  }
+  for (const region of ROOM_HIT_REGIONS) {
+    if (inRect(region.x, region.y, region.width, region.height)) return region.id
+  }
+  return null
+}
+
 export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCallbacks): SceneCanvas {
+  const reducedMotion = prefersReducedMotion()
+  const dpr = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1
+
   const app = new App({
     view: mount,
     fill: '#101010',
+    pixelRatio: dpr,
     tree: { type: 'viewport' },
     wheel: {
       zoomMode: true,
@@ -73,6 +93,10 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
     move: {
       drag: true,
       dragEmpty: true,
+      dragAnimate: reducedMotion ? false : 0.92,
+    },
+    pointer: {
+      dragDistance: TAP_DRAG_THRESHOLD_PX,
     },
     multiTouch: {
       singleGesture: { rotation: 0, scale: 1 },
@@ -88,6 +112,7 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
     height: SCENE_H,
     draggable: false,
     hittable: false,
+    smooth: true,
   })
 
   let viewState: ViewState = 'overview'
@@ -99,7 +124,7 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
     height: ASSISTANT_HOTSPOT.height,
     fill: 'rgba(0,0,0,0.01)',
     cursor: 'pointer',
-    hittable: true,
+    hittable: false,
     data: { testid: 'assistant-hotspot' },
   })
 
@@ -152,8 +177,37 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
     callbacks.onAssistantFocus()
   }
 
-  assistantHit.on('click', focusAssistant)
-  assistantHit.on('tap', focusAssistant)
+  const activateRoom = (id: ClickableRoomId) => {
+    if (id === 'boss') {
+      goHome()
+      callbacks.onBossHome()
+      return
+    }
+    focusRoom(id)
+    callbacks.onRoomFocus(id)
+  }
+
+  const pickTargetAtClient = (clientX: number, clientY: number): ClickableRoomId | 'assistant' | null => {
+    const inRect = (el: HTMLElement) => {
+      const r = el.getBoundingClientRect()
+      return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom
+    }
+    if (inRect(hitButton)) return 'assistant'
+    for (const { id, button } of roomHits) {
+      if (inRect(button)) return id
+    }
+    const pt = app.tree.getWorldPointByClient({ clientX, clientY })
+    return pickTargetAtScenePoint(pt.x, pt.y)
+  }
+
+  const handleSceneTap = (clientX: number, clientY: number) => {
+    const target = pickTargetAtClient(clientX, clientY)
+    if (target === 'assistant') {
+      focusAssistant()
+    } else if (target) {
+      activateRoom(target)
+    }
+  }
 
   for (const region of ROOM_HIT_REGIONS) {
     const rect = new Rect({
@@ -163,19 +217,8 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
       height: region.height,
       fill: 'rgba(0,0,0,0.01)',
       cursor: 'pointer',
-      hittable: true,
+      hittable: false,
     })
-    const onRoom = () => {
-      if (region.id === 'boss') {
-        goHome()
-        callbacks.onBossHome()
-        return
-      }
-      focusRoom(region.id)
-      callbacks.onRoomFocus(region.id)
-    }
-    rect.on('click', onRoom)
-    rect.on('tap', onRoom)
 
     const btn = document.createElement('button')
     btn.type = 'button'
@@ -184,10 +227,7 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
     btn.dataset.room = region.id
     btn.title = region.label
     btn.setAttribute('aria-label', `点击${region.label}`)
-    btn.addEventListener('click', (ev) => {
-      ev.stopPropagation()
-      onRoom()
-    })
+    btn.tabIndex = -1
     mount.appendChild(btn)
     roomHits.push({ id: region.id, rect, button: btn })
   }
@@ -203,11 +243,57 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
   hitButton.dataset.testid = 'assistant-scene-hit'
   hitButton.title = '点击助理'
   hitButton.setAttribute('aria-label', '点击场景中的助理')
-  hitButton.addEventListener('click', (ev) => {
-    ev.stopPropagation()
-    focusAssistant()
-  })
+  hitButton.tabIndex = -1
   mount.appendChild(hitButton)
+
+  let pointerTap:
+    | { tracking: boolean; x: number; y: number; dragged: boolean; pointerId: number; target: EventTarget | null }
+    | null = null
+
+  mount.addEventListener(
+    'pointerdown',
+    (ev) => {
+      if (ev.button !== 0) return
+      const el = ev.target as HTMLElement
+      if (el.closest('.look-home-capsule')) return
+      pointerTap = {
+        tracking: true,
+        x: ev.clientX,
+        y: ev.clientY,
+        dragged: false,
+        pointerId: ev.pointerId,
+        target: ev.target,
+      }
+    },
+    { capture: true },
+  )
+
+  mount.addEventListener(
+    'pointermove',
+    (ev) => {
+      if (!pointerTap?.tracking || ev.pointerId !== pointerTap.pointerId) return
+      if (
+        Math.hypot(ev.clientX - pointerTap.x, ev.clientY - pointerTap.y) > TAP_DRAG_THRESHOLD_PX
+      ) {
+        pointerTap.dragged = true
+      }
+    },
+    { capture: true },
+  )
+
+  const endPointerTap = (ev: PointerEvent) => {
+    if (!pointerTap?.tracking || ev.pointerId !== pointerTap.pointerId) return
+    const wasTap = !pointerTap.dragged
+    const x = ev.clientX
+    const y = ev.clientY
+    pointerTap = null
+    if (wasTap && !(ev.target as HTMLElement).closest('.look-home-capsule')) {
+      handleSceneTap(x, y)
+    }
+  }
+
+  mount.addEventListener('pointerup', endPointerTap, { capture: true })
+  mount.addEventListener('pointercancel', endPointerTap, { capture: true })
 
   const lookHomeCapsule = document.createElement('button')
   lookHomeCapsule.type = 'button'
@@ -365,5 +451,7 @@ export function createSceneCanvas(mount: HTMLElement, callbacks: SceneCanvasCall
       y: app.tree.y ?? 0,
       scale: app.tree.scaleX ?? 1,
     }),
+    getMoveDragAnimate: () => app.config?.move?.dragAnimate,
+    tapAtClient: handleSceneTap,
   }
 }

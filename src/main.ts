@@ -70,6 +70,8 @@ type SceneWindow = {
   __getTreeState?: () => { x: number; y: number; scale: number }
   __getHomeHitsVisibility?: () => ReturnType<SceneCanvas['getHomeHitsVisibility']>
   __isLookHomeCapsuleVisible?: () => boolean
+  __getMoveDragAnimate?: () => boolean | number | undefined
+  __sceneTapAtClient?: (clientX: number, clientY: number) => void
 }
 
 const w = window as unknown as SceneWindow
@@ -84,3 +86,5 @@ w.__getRoomScreenCenter = (room) => scene.getRoomScreenCenter(room)
 w.__getTreeState = () => scene.getTreeState()
 w.__getHomeHitsVisibility = () => scene.getHomeHitsVisibility()
 w.__isLookHomeCapsuleVisible = () => scene.isLookHomeCapsuleVisible()
+w.__getMoveDragAnimate = () => scene.getMoveDragAnimate()
+w.__sceneTapAtClient = (x, y) => scene.tapAtClient(x, y)
