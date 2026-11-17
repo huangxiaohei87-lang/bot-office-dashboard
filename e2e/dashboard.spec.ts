@@ -1,0 +1,476 @@
+import { expect, test } from '@playwright/test'
+
+const VP = { width: 1920, height: 1080 }
+
+async function waitHotspotReady(page: import('@playwright/test').Page) {
+  await page.goto('/')
+  await page.getByTestId('scene-viewport').locator('canvas').first().waitFor({ timeout: 15_000 })
+  await page.waitForFunction(() => {
+    const fn = (window as unknown as { __getAssistantHotspotScreenRect?: () => { width: number; centerX: number } | null })
+      .__getAssistantHotspotScreenRect
+    const r = fn?.()
+    return r && r.width > 80 && r.centerX > 300
+  })
+}
+
+async function readHotspotRect(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const hit = document.querySelector('[data-testid="assistant-scene-hit"]')!.getBoundingClientRect()
+    const api = (window as unknown as { __getAssistantHotspotScreenRect?: () => { left: number; top: number; width: number; height: number; centerX: number; centerY: number } | null })
+      .__getAssistantHotspotScreenRect
+    const vp = document.getElementById('scene-viewport')!.getBoundingClientRect()
+    return { hit, vp, api: api?.() }
+  })
+}
+
+async function viewportCenter(page: import('@playwright/test').Page) {
+  const box = await page.getByTestId('scene-viewport').boundingBox()
+  expect(box).not.toBeNull()
+  return { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+}
+
+async function panOnDarkMargin(page: import('@playwright/test').Page) {
+  const box = await page.getByTestId('scene-viewport').boundingBox()
+  expect(box).not.toBeNull()
+  const sx = box!.x + box!.width * 0.52
+  const sy = box!.y + 28
+  await page.mouse.move(sx, sy)
+  await page.mouse.down()
+  await page.mouse.move(sx - 150, sy + 70, { steps: 12 })
+  await page.mouse.up()
+  await page.waitForTimeout(400)
+}
+
+async function panFromRoom(
+  page: import('@playwright/test').Page,
+  room: 'app' | 'hr' | 'boss',
+  dx: number,
+  dy: number,
+) {
+  const center = await page.evaluate(
+    (r) =>
+      (window as unknown as { __getRoomScreenCenter?: (id: string) => { x: number; y: number } | null }).__getRoomScreenCenter?.(r),
+    room,
+  )
+  expect(center).not.toBeNull()
+  await page.mouse.move(center!.x, center!.y)
+  await page.mouse.down()
+  await page.mouse.move(center!.x + dx, center!.y + dy, { steps: 14 })
+  await page.mouse.up()
+  await page.waitForTimeout(500)
+}
+
+async function wheelOnRoom(page: import('@playwright/test').Page, room: 'app' | 'hr' | 'pantry') {
+  const center = await page.evaluate(
+    (r) =>
+      (window as unknown as { __getRoomScreenCenter?: (id: string) => { x: number; y: number } | null }).__getRoomScreenCenter?.(r),
+    room,
+  )
+  expect(center).not.toBeNull()
+  await page.mouse.move(center!.x, center!.y)
+  await page.mouse.wheel(0, -500)
+  await page.waitForTimeout(400)
+}
+
+async function assertHomeHitsClickable(page: import('@playwright/test').Page) {
+  const v = await page.evaluate(() => {
+    const vp = document.getElementById('scene-viewport')!.getBoundingClientRect()
+    const measure = (sel: string) => {
+      const el = document.querySelector(sel)
+      if (!el) return null
+      const r = el.getBoundingClientRect()
+      const iw = Math.max(0, Math.min(r.right, vp.right) - Math.max(r.left, vp.left))
+      const ih = Math.max(0, Math.min(r.bottom, vp.bottom) - Math.max(r.top, vp.top))
+      const inter = iw * ih
+      const area = Math.max(r.width * r.height, 1)
+      return { frac: inter / area, visibleWidth: iw, visibleHeight: ih }
+    }
+    return {
+      assistant: measure('[data-testid="assistant-scene-hit"]'),
+      boss: measure('[data-testid="room-hit-boss"]'),
+    }
+  })
+  expect(v.assistant).not.toBeNull()
+  expect(v.boss).not.toBeNull()
+  for (const hit of [v.assistant!, v.boss!]) {
+    expect(hit.frac).toBeGreaterThanOrEqual(0.8)
+    expect(hit.visibleWidth).toBeGreaterThanOrEqual(24)
+    expect(hit.visibleHeight).toBeGreaterThanOrEqual(24)
+  }
+}
+
+async function sceneTapAtClient(page: import('@playwright/test').Page, clientX: number, clientY: number) {
+  await page.evaluate(
+    ({ x, y }) =>
+      (window as unknown as { __sceneTapAtClient?: (a: number, b: number) => void }).__sceneTapAtClient?.(x, y),
+    { x: clientX, y: clientY },
+  )
+  await page.waitForTimeout(450)
+}
+
+async function clickHomeHitInViewport(page: import('@playwright/test').Page) {
+  const c = await page.evaluate(() =>
+    (window as unknown as { __getAssistantScreenCenter?: () => { x: number; y: number } | null }).__getAssistantScreenCenter?.(),
+  )
+  expect(c).not.toBeNull()
+  await sceneTapAtClient(page, c!.x, c!.y)
+}
+
+async function clickLookHomeCapsule(page: import('@playwright/test').Page) {
+  const box = await page.getByTestId('look-home-capsule').boundingBox()
+  expect(box).not.toBeNull()
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.waitForTimeout(450)
+}
+
+async function lookHomeViaCapsuleIfNeeded(page: import('@playwright/test').Page) {
+  const capsule = page.getByTestId('look-home-capsule')
+  if (await capsule.isVisible()) {
+    await clickLookHomeCapsule(page)
+    await expect(capsule).toBeHidden()
+  }
+  await assertHomeHitsClickable(page)
+}
+
+async function clickRoomCenter(page: import('@playwright/test').Page, room: 'app' | 'hr' | 'pantry' | 'boss') {
+  const center = await page.evaluate(
+    (r) =>
+      (window as unknown as { __getRoomScreenCenter?: (id: string) => { x: number; y: number } | null }).__getRoomScreenCenter?.(r),
+    room,
+  )
+  expect(center).not.toBeNull()
+  await sceneTapAtClient(page, center!.x, center!.y)
+}
+
+async function wheelOnDarkMargin(page: import('@playwright/test').Page) {
+  const box = await page.getByTestId('scene-viewport').boundingBox()
+  expect(box).not.toBeNull()
+  const x = box!.x + box!.width * 0.52
+  const y = box!.y + 28
+  await page.mouse.move(x, y)
+  await page.mouse.wheel(0, -500)
+  await page.waitForTimeout(400)
+}
+
+test.describe('可视化 Bot 协作管理后台 — 第一期', () => {
+  test.use({ viewport: VP })
+
+  test('纸白外壳、近黑圆角视口与对话栏可见', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.locator('.dashboard-shell')).toBeVisible()
+    await expect(page.getByTestId('scene-viewport')).toBeVisible()
+    await expect(page.getByTestId('chat-card')).toBeVisible()
+    const viewport = page.getByTestId('scene-viewport')
+    const bg = await viewport.evaluate((el) => getComputedStyle(el).backgroundColor)
+    expect(bg).toBe('rgb(16, 16, 16)')
+  })
+
+  test('场景图加载，模拟状态文案包含四间房与离开/休息', async ({ page }) => {
+    await waitHotspotReady(page)
+    const text = await page.getByTestId('chat-messages').innerText()
+    expect(text).toContain('老大办公室')
+    expect(text).toContain('茶水间休息')
+    expect(text).toContain('审查闸门')
+    expect(text).not.toMatch(/审查闸\s*\n\s*门/)
+  })
+
+  test('热区盖住助理（屏幕坐标），不在视口左上空白', async ({ page }) => {
+    await waitHotspotReady(page)
+    const { hit, vp, api } = await readHotspotRect(page)
+    const relX = (hit.left + hit.width / 2 - vp.left) / vp.width
+    const relY = (hit.top + hit.height / 2 - vp.top) / vp.height
+    expect(relX).toBeGreaterThan(0.22)
+    expect(relX).toBeLessThan(0.42)
+    expect(relY).toBeGreaterThan(0.45)
+    expect(relY).toBeLessThan(0.72)
+    expect(api).not.toBeNull()
+    expect(Math.abs((api?.centerX ?? 0) - (hit.left + hit.width / 2))).toBeLessThan(4)
+  })
+
+  test('左栏工具条与右栏卡片下沿对齐（底边留白）', async ({ page }) => {
+    await page.goto('/')
+    const shell = await page.locator('.dashboard-shell').boundingBox()
+    const toolbar = await page.getByTestId('scene-toolbar').boundingBox()
+    const chat = await page.getByTestId('chat-card').boundingBox()
+    expect(shell!.height - (toolbar!.y + toolbar!.height - shell!.y)).toBeGreaterThanOrEqual(16)
+    expect(Math.abs(chat!.y + chat!.height - (toolbar!.y + toolbar!.height))).toBeLessThan(6)
+  })
+
+  test('点击助理人物位置可聚焦；点视口左上空白不聚焦', async ({ page }) => {
+    await waitHotspotReady(page)
+    const center = await page.evaluate(() =>
+      (window as unknown as { __getAssistantScreenCenter?: () => { x: number; y: number } | null }).__getAssistantScreenCenter?.(),
+    )
+    await page.mouse.click(center!.x, center!.y)
+    await expect(page.getByTestId('chat-card')).toHaveClass(/chat-card--focused/)
+    await expect(page.getByTestId('chat-input')).toBeFocused()
+    await page.evaluate(() => document.getElementById('chat-card')?.classList.remove('chat-card--focused'))
+    const vp = await page.getByTestId('scene-viewport').boundingBox()
+    await page.mouse.click(vp!.x + 48, vp!.y + 36)
+    await expect(page.getByTestId('chat-input')).not.toBeFocused()
+  })
+
+  test('在办公室热区上拖拽平移且不误进房（不点适应）', async ({ page }) => {
+    await waitHotspotReady(page)
+    const viewBefore = await page.evaluate(() =>
+      (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.(),
+    )
+    const treeBefore = await page.evaluate(() =>
+      (window as unknown as { __getTreeState?: () => { x: number; y: number } }).__getTreeState?.(),
+    )
+    await panFromRoom(page, 'app', -140, 85)
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe(
+      viewBefore,
+    )
+    const treeAfter = await page.evaluate(() =>
+      (window as unknown as { __getTreeState?: () => { x: number; y: number } }).__getTreeState?.(),
+    )
+    const moved =
+      Math.abs((treeAfter?.x ?? 0) - (treeBefore?.x ?? 0)) + Math.abs((treeAfter?.y ?? 0) - (treeBefore?.y ?? 0))
+    expect(moved).toBeGreaterThan(25)
+  })
+
+  test('指针在房间热区上滚轮缩放（不点适应）', async ({ page }) => {
+    await waitHotspotReady(page)
+    const scaleBefore = await page.evaluate(() => (window as unknown as { __getCameraScale?: () => number }).__getCameraScale?.())
+    await wheelOnRoom(page, 'hr')
+    const scaleAfter = await page.evaluate(() => (window as unknown as { __getCameraScale?: () => number }).__getCameraScale?.())
+    expect(scaleAfter).toBeGreaterThan((scaleBefore ?? 0) * 1.08)
+  })
+
+  test('回车发送用户消息并显示预览说明', async ({ page }) => {
+    await waitHotspotReady(page)
+    const input = page.getByTestId('chat-input')
+    await input.fill('本机测试：交互流畅度')
+    await input.press('Enter')
+    const box = await page.getByTestId('chat-messages').locator('.msg-bubble--user').last()
+    await expect(box).toContainText('本机测试：交互流畅度')
+    await expect(page.getByTestId('chat-messages')).toContainText('页面内预览')
+    await input.fill('第二条')
+    await input.press('Enter')
+    await expect(page.getByTestId('chat-messages').locator('.msg-bubble--user')).toHaveCount(3)
+  })
+
+  test('平移后热区中心明显偏移（不点适应）', async ({ page }) => {
+    await waitHotspotReady(page)
+    const before = await readHotspotRect(page)
+    const treeBefore = await page.evaluate(() => (window as unknown as { __getTreeState?: () => { x: number; y: number } }).__getTreeState?.())
+    await panOnDarkMargin(page)
+    const after = await readHotspotRect(page)
+    const treeAfter = await page.evaluate(() => (window as unknown as { __getTreeState?: () => { x: number; y: number } }).__getTreeState?.())
+    const treeDx = Math.abs((treeAfter?.x ?? 0) - (treeBefore?.x ?? 0)) + Math.abs((treeAfter?.y ?? 0) - (treeBefore?.y ?? 0))
+    const hotDx = Math.abs(after.hit.left + after.hit.width / 2 - (before.hit.left + before.hit.width / 2))
+    const hotDy = Math.abs(after.hit.top + after.hit.height / 2 - (before.hit.top + before.hit.height / 2))
+    expect(treeDx).toBeGreaterThan(40)
+    if (hotDx + hotDy < 30) {
+      expect(treeDx).toBeGreaterThan(80)
+    } else {
+      expect(hotDx + hotDy).toBeGreaterThan(30)
+    }
+  })
+
+  test('按钮放大后热区变大（不点适应）', async ({ page }) => {
+    await waitHotspotReady(page)
+    const before = await readHotspotRect(page)
+    await page.getByRole('button', { name: '放大' }).click()
+    await page.getByRole('button', { name: '放大' }).click()
+    await page.waitForTimeout(350)
+    const after = await readHotspotRect(page)
+    expect(after.hit.width).toBeGreaterThan(before.hit.width * 1.12)
+  })
+
+  test('滚轮缩放后相机尺度变化（不点适应）', async ({ page }) => {
+    await waitHotspotReady(page)
+    const scaleBefore = await page.evaluate(() => (window as unknown as { __getCameraScale?: () => number }).__getCameraScale?.())
+    await wheelOnDarkMargin(page)
+    const scaleAfter = await page.evaluate(() => (window as unknown as { __getCameraScale?: () => number }).__getCameraScale?.())
+    expect(scaleAfter).toBeGreaterThan((scaleBefore ?? 0) * 1.08)
+  })
+
+  test('画布旋转保持 0', async ({ page }) => {
+    await waitHotspotReady(page)
+    const rotation = await page.evaluate(() =>
+      (window as unknown as { __sceneRotation?: () => number }).__sceneRotation?.(),
+    )
+    expect(rotation).toBe(0)
+  })
+
+  test('点 APP制作台：近距放大与项目列表，按需胶囊后回对话', async ({ page }) => {
+    await waitHotspotReady(page)
+    await clickRoomCenter(page, 'app')
+    await expect(page.getByTestId('panel-app-projects')).toBeVisible()
+    await expect(page.getByText('贪吃蛇网页游戏试点')).toBeVisible()
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe('app')
+    await lookHomeViaCapsuleIfNeeded(page)
+    await clickHomeHitInViewport(page)
+    await expect(page.getByTestId('chat-messages')).toBeVisible({ timeout: 10_000 })
+    expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe('chat')
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe(
+      'overview',
+    )
+  })
+
+  test('点人事部：胶囊看向回家点后仍为人事列表，再点助理回对话', async ({ page }) => {
+    await waitHotspotReady(page)
+    await clickRoomCenter(page, 'hr')
+    await expect(page.getByTestId('panel-hr-projects')).toBeVisible()
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe('hr')
+    await expect(page.getByTestId('look-home-capsule')).toBeVisible()
+    await clickLookHomeCapsule(page)
+    await assertHomeHitsClickable(page)
+    await expect(page.getByTestId('look-home-capsule')).toBeHidden()
+    expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe(
+      'hr-projects',
+    )
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe('hr')
+    await clickHomeHitInViewport(page)
+    await expect(page.getByTestId('chat-messages')).toBeVisible({ timeout: 10_000 })
+    expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe('chat')
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe(
+      'overview',
+    )
+  })
+
+  test('点茶水间：胶囊看向回家点后仍为错题本，再点老大办公室回对话', async ({ page }) => {
+    await waitHotspotReady(page)
+    await clickRoomCenter(page, 'pantry')
+    await expect(page.getByTestId('panel-mistakes')).toBeVisible()
+    await expect(page.getByText('茶水间错题本')).toBeVisible()
+    await expect(page.getByTestId('chat-input')).toHaveCount(0)
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe(
+      'pantry',
+    )
+    await expect(page.getByTestId('look-home-capsule')).toBeVisible()
+    await clickLookHomeCapsule(page)
+    await assertHomeHitsClickable(page)
+    await expect(page.getByTestId('look-home-capsule')).toBeHidden()
+    expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe(
+      'mistakes',
+    )
+    const bossC = await page.evaluate(() =>
+      (window as unknown as { __getRoomScreenCenter?: (id: string) => { x: number; y: number } | null }).__getRoomScreenCenter?.('boss'),
+    )
+    expect(bossC).not.toBeNull()
+    await sceneTapAtClient(page, bossC!.x, bossC!.y)
+    await expect(page.getByTestId('chat-messages')).toBeVisible({ timeout: 10_000 })
+    expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe('chat')
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe(
+      'overview',
+    )
+  })
+
+  test('字阶：栏标题 18/28 与工具条 12/20', async ({ page }) => {
+    await page.goto('/')
+    const titleStyle = await page.locator('.panel-title').first().evaluate((el) => {
+      const s = getComputedStyle(el)
+      return { fontSize: s.fontSize, lineHeight: s.lineHeight, color: s.color }
+    })
+    expect(titleStyle.fontSize).toBe('18px')
+    expect(titleStyle.lineHeight).toBe('28px')
+    expect(titleStyle.color).toBe('rgb(42, 41, 35)')
+    const tb = await page.getByTestId('scene-toolbar').evaluate((el) => {
+      const s = getComputedStyle(el)
+      return { fontSize: s.fontSize, lineHeight: s.lineHeight }
+    })
+    expect(tb.fontSize).toBe('12px')
+    expect(tb.lineHeight).toBe('20px')
+    const btn = await page.getByTestId('scene-toolbar').locator('button').first().evaluate((el) => {
+      const s = getComputedStyle(el)
+      return { fontSize: s.fontSize, lineHeight: s.lineHeight }
+    })
+    expect(btn.fontSize).toBe('12px')
+    expect(btn.lineHeight).toBe('20px')
+  })
+
+  test('未创建空地不可点出列表', async ({ page }) => {
+    await waitHotspotReady(page)
+    const vp = await page.getByTestId('scene-viewport').boundingBox()
+    await page.mouse.click(vp!.x + vp!.width * 0.12, vp!.y + vp!.height * 0.08)
+    await page.waitForTimeout(200)
+    await expect(page.getByTestId('chat-card')).toBeVisible()
+    await expect(page.getByTestId('panel-mistakes')).toHaveCount(0)
+  })
+
+  test('右栏切入：切换后带 entering 类', async ({ page }) => {
+    await waitHotspotReady(page)
+    await clickRoomCenter(page, 'app')
+    await page.waitForTimeout(600)
+    const center = await page.evaluate(() =>
+      (window as unknown as { __getRoomScreenCenter?: (id: string) => { x: number; y: number } | null }).__getRoomScreenCenter?.('hr'),
+    )
+    expect(center).not.toBeNull()
+    await page.evaluate(
+      ({ x, y }) =>
+        (window as unknown as { __sceneTapAtClient?: (a: number, b: number) => void }).__sceneTapAtClient?.(x, y),
+      { x: center!.x, y: center!.y },
+    )
+    await expect
+      .poll(
+        async () =>
+          (await page.locator('[data-panel-shell="side-panel-inner"]').getAttribute('data-panel-entering')) === 'true',
+        { timeout: 8000 },
+      )
+      .toBe(true)
+    await page.waitForTimeout(380)
+    await expect(page.getByTestId('panel-hr-projects')).toBeVisible()
+  })
+
+  test('项目列表条目出现与选中（墨条 + 已选中）', async ({ page }) => {
+    await waitHotspotReady(page)
+    await clickRoomCenter(page, 'app')
+    const first = page.getByTestId('app-project-item-0')
+    await expect(first).toHaveClass(/panel-list__item--selected/)
+    await expect(first.getByText('已选中')).toBeVisible()
+    const anim = await first.evaluate((el) => getComputedStyle(el).animationName)
+    expect(anim).toContain('panel-item-reveal')
+    await first.click()
+    await expect(first).toHaveClass(/panel-list__item--selected/)
+  })
+
+  test('胶囊 translateY 位移动画约 0.9s', async ({ page }) => {
+    await waitHotspotReady(page)
+    await clickRoomCenter(page, 'hr')
+    await expect(page.getByTestId('look-home-capsule')).toBeVisible()
+    const capStyle = await page.getByTestId('look-home-capsule').evaluate((el) => {
+      const s = getComputedStyle(el)
+      return { animationName: s.animationName, animationDuration: s.animationDuration }
+    })
+    expect(capStyle.animationName).toContain('look-home-capsule-bounce')
+    expect(parseFloat(capStyle.animationDuration)).toBeGreaterThanOrEqual(0.85)
+    expect(parseFloat(capStyle.animationDuration)).toBeLessThanOrEqual(0.95)
+    const keyframesUseTranslateY = await page.evaluate(() => {
+      for (const sheet of document.styleSheets) {
+        try {
+          for (const rule of sheet.cssRules) {
+            if (rule instanceof CSSKeyframesRule && rule.name === 'look-home-capsule-bounce') {
+              return [...rule.cssRules].some((r) => r.cssText.includes('translateY(-5px)'))
+            }
+          }
+        } catch {
+          /* cross-origin sheet */
+        }
+      }
+      return false
+    })
+    expect(keyframesUseTranslateY).toBe(true)
+  })
+
+  test('prefers-reduced-motion 下无拖拽惯性、胶囊不跳动', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await waitHotspotReady(page)
+    expect(await page.evaluate(() => (window as unknown as { __getMoveDragAnimate?: () => boolean }).__getMoveDragAnimate?.())).toBe(
+      false,
+    )
+    await clickRoomCenter(page, 'hr')
+    const capsule = page.getByTestId('look-home-capsule')
+    await expect(capsule).toBeVisible()
+    const anim = await capsule.evaluate((el) => getComputedStyle(el).animationName)
+    expect(anim).toBe('none')
+    await clickLookHomeCapsule(page)
+    await assertHomeHitsClickable(page)
+    expect(await page.evaluate(() => (window as unknown as { __getSidePanelMode?: () => string }).__getSidePanelMode?.())).toBe(
+      'hr-projects',
+    )
+    expect(await page.evaluate(() => (window as unknown as { __getSceneViewState?: () => string }).__getSceneViewState?.())).toBe('hr')
+  })
+})

@@ -1,0 +1,5 @@
+Noto Serif SC and Noto Sans SC are distributed via @fontsource packages under the
+SIL Open Font License 1.1. See https://scripts.sil.org/OFL
+
+Bundled font files: dist/assets/*noto*.{woff,woff2} after `npm run build`.
+Source packages: @fontsource/noto-serif-sc, @fontsource/noto-sans-sc (npm).
